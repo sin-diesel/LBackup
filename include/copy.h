@@ -1,6 +1,9 @@
 #pragma once
 
 
+#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -15,3 +18,6 @@
 #include <string.h>
 #include <signal.h>
 #include <sys/ipc.h>
+#include <dirent.h>
+
+void traverse();
