@@ -10,22 +10,9 @@ int main(int argc, char** argv) {
     char* src_name = argv[1];
     char* dst_name = argv[2];
 
-    // DIR* src = opendir(src_name);
-    // if (src == NULL) {
-    //     perror("Error opening src directory: ");
-    // }
+    int initial_indent = 1;
 
-    // DIR* dst = opendir(src_name);
-    // if (dst == NULL) {
-    //     perror("Error opening dst directory: ");
-    // }
-
-    traverse(src_name, 1, dst_name);
-    //traverse(dst_name, 1);
-
-
-    // closedir(src);
-    // closedir(dst);
+    traverse(src_name, dst_name, initial_indent);
 
     return 0;
 

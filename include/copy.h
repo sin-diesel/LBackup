@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h> 
+#include <sys/wait.h>
 #include <unistd.h>
 #include <assert.h>
 #include <fcntl.h>
@@ -20,4 +21,14 @@
 #include <sys/ipc.h>
 #include <dirent.h>
 
-void traverse();
+/* traverse the src_name directory, compare all files and subdirectories
+   with the corresponding entries in dest_name directory, copies entries which do not
+   exist in dest_name, indend is a number for printing subdirectories with identation */
+void traverse(char* src_name, char* dest_name, int indent);
+
+/* find a file named name in directory dir, returns 1 on success and 0 if file
+   does not exists */
+int lookup(const char* name, const char* dir);
+
+/* copy src to dst, type specifies whether it is a regular file or a directory */
+void copy(char* src, char* dst, int type);
