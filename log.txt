@@ -1,34 +1,15 @@
-  File file1, Time since last modification: 1606674908 sec
-File file1 exists
-  Dir subdir2, Time since last modification: 1606773272
-File subdir2 exists
-       File subfile2, Time since last modification: 1606773269 sec
-Copying file : test/subdir2/subfile2 to test2/subdir2
-       File subfile, Time since last modification: 1606773264 sec
-Copying file : test/subdir2/subfile to test2/subdir2
-       File subfile3, Time since last modification: 1606773272 sec
-Copying file : test/subdir2/subfile3 to test2/subdir2
-  File file3, Time since last modification: 1606674926 sec
-File file3 exists
-  Dir subdir1, Time since last modification: 1606732535
-File subdir1 exists
-       File subfile5, Time since last modification: 1606731982 sec
-File subfile5 exists
-       File subfile1, Time since last modification: 1606676074 sec
-File subfile1 exists
-       File subfile4, Time since last modification: 1606731982 sec
-File subfile4 exists
-       File subfile2, Time since last modification: 1606676080 sec
-File subfile2 exists
-       File subfile6, Time since last modification: 1606732535 sec
-File subfile6 exists
-       File subfile3, Time since last modification: 1606731982 sec
-File subfile3 exists
-  File file2, Time since last modification: 1606674916 sec
-File file2 exists
-  Dir subdir3, Time since last modification: 1606732991
-File subdir3 exists
-       File subfile, Time since last modification: 1606732991 sec
-File subfile exists
-       File subfile3, Time since last modification: 1606732986 sec
-File subfile3 exists
+  File file1, Time since last modification: 1606942740 sec
+Copying file : test/file1 to test2
+  File(in dest) file1, Time since last modification: 1606944992 sec (compared with 1606942740 in source
+  Dir subdir2, Time since last modification: 1606773538
+Copying dir : test/subdir2 to test2
+  File file3, Time since last modification: 1606942745 sec
+Copying file : test/file3 to test2
+  File(in dest) file3, Time since last modification: 1606944992 sec (compared with 1606942745 in source
+  Dir subdir1, Time since last modification: 1606943024
+Copying dir : test/subdir1 to test2
+  File file2, Time since last modification: 1606942741 sec
+Copying file : test/file2 to test2
+  File(in dest) file2, Time since last modification: 1606944992 sec (compared with 1606942741 in source
+  Dir subdir3, Time since last modification: 1606773538
+Copying dir : test/subdir3 to test2

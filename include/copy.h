@@ -32,3 +32,7 @@ int lookup(const char* name, const char* dir);
 
 /* copy src to dst, type specifies whether it is a regular file or a directory */
 void copy(char* src, char* dst, int type);
+
+void init_dest_dir(const char* dst_name);
+
+void change_time(char* dest_name);

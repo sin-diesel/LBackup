@@ -12,6 +12,7 @@ int main(int argc, char** argv) {
 
     int initial_indent = 1;
 
+    init_dest_dir(dst_name);
     traverse(src_name, dst_name, initial_indent);
 
     return 0;

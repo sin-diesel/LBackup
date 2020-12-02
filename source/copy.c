@@ -6,7 +6,8 @@
 
 #define ERROR(error) fprintf(stderr, "Error in line %d, func %s: %s\n", __LINE__, __func__, strerror(error))
 
-#define LOG(expr, ...) FILE* log = fopen("log.txt", "a"); \
+FILE* log;
+#define LOG(expr, ...) log = fopen("log.txt", "a"); \
                   assert(log); \
                   fprintf(log, expr, __VA_ARGS__); \
                   fflush(log);
@@ -64,6 +65,34 @@ void copy(char* src, char* dst, int type) {
     wait(&status);
 }
 
+void change_time(char* dest_name) {
+
+    char* argv[3];
+    argv[0] = "-m";
+    argv[1] = dest_name;
+    argv[2] = NULL;
+
+    int status = 0;
+
+    int pid = fork();
+    if (pid == -1) {
+        ERROR(errno);
+    }
+    if (pid == 0) {
+        execvp("touch", argv);
+        ERROR(errno);
+    }
+
+    wait(&status);
+}
+
+void init_dest_dir(const char* dst_name) {
+    mkdir(dst_name, 0777);
+    if (errno != EEXIST) {
+        printf("Creating new backup directory\n");
+    }
+    
+}
 
 void traverse(char* src_name, char* dest_name, int indent) {
 
@@ -105,6 +134,36 @@ void traverse(char* src_name, char* dest_name, int indent) {
                 LOG("Copying file : %s to %s\n", source_name, dest_name);
                 copy(source_name, dest_name,  DT_REG);
 
+            }
+
+            // if it has been found, compare last modified times, if they differ copy again
+            struct stat dest_info;
+
+            DIR* dst_dir = opendir(dest_name);
+            if (dst_dir < 0) {
+                ERROR(errno);
+                exit(-1);
+            }
+
+            int dstf = dirfd(dst_dir);
+            if (dstf < 0) {
+                ERROR(errno);
+                exit(-1);
+            }
+            
+            fstatat(dstf, entry->d_name, &dest_info, 0);
+            LOG("%*s File(in dest) %s, Time since last modification: %ld sec (compared with %ld in source\n", indent, \
+                    "", entry->d_name, \
+                    dest_info.st_mtime, reg_info.st_mtime);
+            closedir(dst_dir);
+
+            if (dest_info.st_mtime < reg_info.st_mtime) {
+                char source_name[MAX_PATH_SIZE];
+                snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
+                LOG("Updating file : %s to %s\n", source_name, dest_name);
+                printf("Updating file : %s to %s\n", source_name, dest_name);
+                copy(source_name, dest_name,  DT_REG);
+                change_time(dest_name);
             }
                                     
         } else if (entry->d_type == DT_DIR) {
