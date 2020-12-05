@@ -6,12 +6,83 @@
 
 #define ERROR(error) fprintf(stderr, "Error in line %d, func %s: %s\n", __LINE__, __func__, strerror(error))
 
-FILE* log;
-#define LOG(expr, ...) log = fopen("log.txt", "a"); \
-                  assert(log); \
-                  fprintf(log, expr, __VA_ARGS__); \
-                  fflush(log);
-                  fclose(log);
+
+const char daemon_path[] = "home/stanislav/Documents/MIPT/3rd_semester/Computer_technologies/Reserv_copy/log_daemon.txt";
+FILE* log_file;
+FILE* log_daemon;
+#define LOG(expr, ...) log_file = fopen("log.txt", "a"); \
+                  assert(log_file); \
+                  fprintf(log_file, expr, __VA_ARGS__); \
+                  fflush(log_file); \
+                  fclose(log_file);
+
+#define LOG_D(expr, ...) log_file = fopen(daemon_path, "a"); \
+                  assert(log_file); \
+                  fprintf(log_file, expr, __VA_ARGS__); \
+                  fflush(log_file); \
+                  fclose(log_file);
+
+void init_daemon(const char* src, const char* dst) {
+    pid_t pid = fork();
+
+    if (pid < 0) {
+        ERROR(errno);
+        exit(EXIT_FAILURE);
+    } else if (pid > 0) {
+        exit(EXIT_SUCCESS);
+    }
+
+    umask(0);
+
+    pid_t sid = setsid();
+
+    if (sid < 0) {
+        LOG_D("Error setting sid: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    
+    if (chdir("/") < 0) {
+        LOG_D("Error changing dir: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+
+    pid_t daemon_pid = getpid();
+
+    int fd = open("reserv_copy.pid", O_WRONLY | O_CREAT | O_TRUNC);
+    if (fd < 0) {
+        LOG_D("Error opening pid file dir: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    int n_write = write(fd, &daemon_pid, sizeof(pid_t));
+    assert(n_write == sizeof(pid_t));
+
+    close(fd);
+
+    LOG_D("Daemon initialized at %s\n", daemon_path);
+
+    int time = 0;
+    while(1) {
+        LOG_D("Daemon running %d second\n", time);
+        sleep(5);
+
+        char* src_name = src;
+        char* dst_name = dst;
+
+        int initial_indent = 1;
+
+        init_dest_dir(dst_name);
+        LOG_D("Daemon running %d second\n", time);
+        traverse(src_name, dst_name, initial_indent);
+
+        time += 5;
+    }
+
+}
 
 int lookup(const char* name, const char* dir) { 
 
@@ -27,7 +98,7 @@ int lookup(const char* name, const char* dir) {
         assert(entry);
 
         if (strcmp(entry->d_name, name) == 0) {
-            LOG("Enrty %s exists\n", entry->d_name);
+            LOG_D("Enrty %s exists\n", entry->d_name);
             closedir(directory);
             return 1;
         }
@@ -89,7 +160,7 @@ void change_time(char* dest_name) {
 void init_dest_dir(const char* dst_name) {
     mkdir(dst_name, 0777);
     if (errno != EEXIST) {
-        printf("Creating new backup directory\n");
+       LOG_D("Creating new backup directory: %s\n", strerror(errno));
     }
     
 }
@@ -101,9 +172,10 @@ void traverse(char* src_name, char* dest_name, int indent) {
 
     struct dirent* entry = NULL;
 
+
     DIR* dir = opendir(src_name);
     if (dir == NULL) {
-        ERROR(errno);   
+        LOG_D("Failed opening src directory, %s\n", strerror(errno));   
         exit(-1);
     }
 
@@ -112,7 +184,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
 
         int df = dirfd(dir);
         if (df < 0) {
-            ERROR(errno);
+            LOG_D("Failed opening fd of directory, %s\n", strerror(errno));   
             exit(-1);
         }
 
@@ -121,7 +193,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
             struct stat reg_info;
             fstatat(df, entry->d_name, &reg_info, 0);
 
-            LOG("%*s File %s, Time since last modification: %ld sec\n", indent, \
+            LOG_D("%*s File %s, Time since last modification: %ld sec\n", indent, \
                     "", entry->d_name, \
                     reg_info.st_mtime);
 
@@ -131,7 +203,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
 
                 char source_name[MAX_PATH_SIZE];
                 snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
-                LOG("Copying file : %s to %s\n", source_name, dest_name);
+                LOG_D("Copying file : %s to %s\n", source_name, dest_name);
                 copy(source_name, dest_name,  DT_REG);
 
             }
@@ -141,18 +213,18 @@ void traverse(char* src_name, char* dest_name, int indent) {
 
             DIR* dst_dir = opendir(dest_name);
             if (dst_dir < 0) {
-                ERROR(errno);
+                LOG_D("Failed opening dst directory, %s\n", strerror(errno));   
                 exit(-1);
             }
 
             int dstf = dirfd(dst_dir);
             if (dstf < 0) {
-                ERROR(errno);
+                LOG_D("Failed opening fd of dst directory, %s\n", strerror(errno));   
                 exit(-1);
             }
             
             fstatat(dstf, entry->d_name, &dest_info, 0);
-            LOG("%*s File(in dest) %s, Time since last modification: %ld sec (compared with %ld in source\n", indent, \
+            LOG_D("%*s File(in dest) %s, Time since last modification: %ld sec (compared with %ld in source\n", indent, \
                     "", entry->d_name, \
                     dest_info.st_mtime, reg_info.st_mtime);
             closedir(dst_dir);
@@ -160,8 +232,8 @@ void traverse(char* src_name, char* dest_name, int indent) {
             if (dest_info.st_mtime < reg_info.st_mtime) {
                 char source_name[MAX_PATH_SIZE];
                 snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
-                LOG("Updating file : %s to %s\n", source_name, dest_name);
-                printf("Updating file : %s to %s\n", source_name, dest_name);
+                //LOG_D("Updating file : %s to %s\n", source_name, dest_name);
+                LOG_D("Updating file : %s to %s\n", source_name, dest_name);
                 copy(source_name, dest_name,  DT_REG);
                 change_time(dest_name);
             }
@@ -177,7 +249,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
                 continue;
             }
 
-            LOG("%*s Dir %s, Time since last modification: %ld\n", indent, \
+            LOG_D("%*s Dir %s, Time since last modification: %ld\n", indent, \
                     "", entry->d_name, dir_info.st_mtime);
 
             // searching for directory d_name in dest_name, if does not exist - copy recursively
@@ -186,7 +258,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
             if (!exists) {
                 char source_name[MAX_PATH_SIZE];
                 snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
-                LOG("Copying dir : %s to %s\n", source_name, dest_name);
+                LOG_D("Copying dir : %s to %s\n", source_name, dest_name);
                 copy(source_name, dest_name, DT_DIR);
                 // do not search in directory that has just been copied
                 continue;

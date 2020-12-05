@@ -20,5 +20,5 @@ main.o: $(SRC_DIR)/main.c
 
 .PHONY: clean
 clean:
-	rm log.txt
-	rm *.o 
+	rm log_daemon.txt
+	rm *.o
