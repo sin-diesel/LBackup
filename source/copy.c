@@ -22,6 +22,16 @@ FILE* log_daemon;
                   fflush(log_file); \
                   fclose(log_file);
 
+void daemon_stop(int signum) {
+    LOG_D("STOPPING DAEMON, logs are in %s\n", daemon_path);
+    exit(EXIT_SUCCESS);
+}
+
+void daemon_stop(int signum) {
+    LOG_D("PRINTING LOGS, logs are in %s\n", daemon_path);
+    exit(EXIT_SUCCESS);
+}
+
 void init_daemon(const char* src, const char* dst) {
     pid_t pid = fork();
 
@@ -67,8 +77,12 @@ void init_daemon(const char* src, const char* dst) {
 
     int time = 0;
     while(1) {
-        LOG_D("Daemon running %d second\n", time);
-        sleep(5);
+        
+        signal(SIGUSR1, daemon_stop);
+        signal(SIGUSR2, daemon_print);
+
+        LOG_D("\n\n\nDaemon running %d second\n\n\n", time);
+        sleep(10);
 
         char* src_name = src;
         char* dst_name = dst;
@@ -76,7 +90,6 @@ void init_daemon(const char* src, const char* dst) {
         int initial_indent = 1;
 
         init_dest_dir(dst_name);
-        LOG_D("Daemon running %d second\n", time);
         traverse(src_name, dst_name, initial_indent);
 
         time += 5;
@@ -184,7 +197,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
 
         int df = dirfd(dir);
         if (df < 0) {
-            LOG_D("Failed opening fd of directory, %s\n", strerror(errno));   
+            LOG_D("Failed opening fd of  src directory, %s\n", strerror(errno));   
             exit(-1);
         }
 
@@ -203,7 +216,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
 
                 char source_name[MAX_PATH_SIZE];
                 snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
-                LOG_D("Copying file : %s to %s\n", source_name, dest_name);
+                LOG_D("NOT BACKUPED File %s, copying to %s\n", source_name, dest_name);
                 copy(source_name, dest_name,  DT_REG);
 
             }
@@ -224,7 +237,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
             }
             
             fstatat(dstf, entry->d_name, &dest_info, 0);
-            LOG_D("%*s File(in dest) %s, Time since last modification: %ld sec (compared with %ld in source\n", indent, \
+            LOG_D("%*s File(in destination directory) %s, Time since last modification: %ld sec (compared with %ld in source)\n", indent, \
                     "", entry->d_name, \
                     dest_info.st_mtime, reg_info.st_mtime);
             closedir(dst_dir);
@@ -233,7 +246,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
                 char source_name[MAX_PATH_SIZE];
                 snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
                 //LOG_D("Updating file : %s to %s\n", source_name, dest_name);
-                LOG_D("Updating file : %s to %s\n", source_name, dest_name);
+                LOG_D("UPDATING file %s\n", source_name);
                 copy(source_name, dest_name,  DT_REG);
                 change_time(dest_name);
             }
@@ -258,7 +271,7 @@ void traverse(char* src_name, char* dest_name, int indent) {
             if (!exists) {
                 char source_name[MAX_PATH_SIZE];
                 snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
-                LOG_D("Copying dir : %s to %s\n", source_name, dest_name);
+                LOG_D("NOT BACKUPED Dir %s, copying to %s\n", source_name, dest_name);
                 copy(source_name, dest_name, DT_DIR);
                 // do not search in directory that has just been copied
                 continue;
