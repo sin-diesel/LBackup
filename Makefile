@@ -11,6 +11,7 @@ EXECUTABLES = $(SOURCES:.c=)
 .PHONY: all
 all: $(OBJECTS)
 	$(CC) $(CCFLAGS) $(OBJECTS) -o rescp
+	$(CC) $(CCFLAGS) rc.c -o rc
 
 copy.o: $(SRC_DIR)/copy.c
 	$(CC) $(CCFLAGS) $(SRC_DIR)/copy.c -c -o copy.o
@@ -20,5 +21,4 @@ main.o: $(SRC_DIR)/main.c
 
 .PHONY: clean
 clean:
-	rm log_daemon.txt
 	rm *.o

@@ -1,20 +1,22 @@
 #define _XOPEN_SOURCE  600 
 
 #include "copy.h"
+#include <poll.h>
 
 #define MAX_PATH_SIZE 1024
 
 #define ERROR(error) fprintf(stderr, "Error in line %d, func %s: %s\n", __LINE__, __func__, strerror(error))
 
-
-const char daemon_path[] = "home/stanislav/Documents/MIPT/3rd_semester/Computer_technologies/Reserv_copy/log_daemon.txt";
+const char daemon_path[] = "/var/log/reserv_copy.log";
 FILE* log_file;
 FILE* log_daemon;
+
 #define LOG(expr, ...) log_file = fopen("log.txt", "a"); \
                   assert(log_file); \
                   fprintf(log_file, expr, __VA_ARGS__); \
                   fflush(log_file); \
                   fclose(log_file);
+
 
 #define LOG_D(expr, ...) log_file = fopen(daemon_path, "a"); \
                   assert(log_file); \
@@ -22,13 +24,63 @@ FILE* log_daemon;
                   fflush(log_file); \
                   fclose(log_file);
 
-void daemon_stop(int signum) {
+void daemon_stop() {
     LOG_D("STOPPING DAEMON, logs are in %s\n", daemon_path);
     exit(EXIT_SUCCESS);
 }
 
-void daemon_stop(int signum) {
-    LOG_D("PRINTING LOGS, logs are in %s\n", daemon_path);
+void daemon_print(char* log_path) {
+
+    char data[BUFSIZ];
+    data[BUFSIZ - 1] = '\0';
+
+    int log = open(daemon_path, O_RDONLY);
+    if (log < 0) {
+        LOG_D("Error opening daemon log file %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    LOG_D("log_path: %s\n", log_path);
+    DIR* log_dir = opendir(log_path);
+    if (log_dir == NULL) {
+        LOG_D("Error opening log dir: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    int df = dirfd(log_dir);
+    if (dirfd < 0) {
+         LOG_D("Error opening log dir descriptor   : %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    int output = openat(df, "user_log.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (output < 0) {
+        LOG_D("Error creating user log: %s\n", strerror(errno));
+        output = openat(df, "user_log.txt", O_WRONLY);
+        if (output < 0) {
+            LOG_D("Error opening user log: %s\n", strerror(errno));
+        }
+    }
+
+    for (int i = 0; i < 3; ++i) {
+        int n_read = read(log, data, BUFSIZ / 2);
+        if (n_read < 0) {
+            LOG_D("Error reading from daemon log file: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+
+        int n_write = write(output, data, BUFSIZ / 2);
+        if (n_write < 0) {
+            LOG_D("Error writing to log file in cwd: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    close(log);
+    close(output);
+
+
+    LOG_D("PRINTING LOGS, logs are in %s\n", log_path);
     exit(EXIT_SUCCESS);
 }
 
@@ -62,7 +114,7 @@ void init_daemon(const char* src, const char* dst) {
 
     pid_t daemon_pid = getpid();
 
-    int fd = open("reserv_copy.pid", O_WRONLY | O_CREAT | O_TRUNC);
+    int fd = open("reserv_copy.pid", O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (fd < 0) {
         LOG_D("Error opening pid file dir: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
@@ -73,16 +125,67 @@ void init_daemon(const char* src, const char* dst) {
 
     close(fd);
 
+    char* myfifo = "/tmp/reserv_fifo";
+
+    int resop = mkfifo(myfifo, O_CREAT | 0666);
+    if (resop < 0) {
+        LOG_D("FIFO init error: %s\n", strerror(errno));
+    }
+
+    int fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
+    if (fd_fifo < 0) {
+        LOG_D("Error opening FIFO: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
     LOG_D("Daemon initialized at %s\n", daemon_path);
 
-    int time = 0;
+    int run_time = 0;
+
     while(1) {
         
-        signal(SIGUSR1, daemon_stop);
-        signal(SIGUSR2, daemon_print);
+        const int sleep_time = 10; // sleeping time in seconds
 
-        LOG_D("\n\n\nDaemon running %d second\n\n\n", time);
-        sleep(10);
+        struct pollfd pfd;
+        pfd.fd = fd_fifo;
+        pfd.events = POLLIN;
+        char data[BUFSIZ];
+        data[BUFSIZ - 1] = 0;
+
+        int events = poll(&pfd, 1, 10000);
+        if (events > 0 && pfd.revents == POLLIN) {
+
+            int n_read = read(fd_fifo, &data, sizeof(int));
+            if (n_read != sizeof(int)) {
+                LOG_D("Error reading from FIFO %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+            LOG_D("Command read from pipe: %d\n", *((int*) data));
+
+            if (*((int*) data) == 0) {
+
+                daemon_stop();
+
+            } else if (*((int*) data) == 1) {
+
+                n_read = read(fd_fifo, &data, BUFSIZ);
+                if (n_read < 0) {
+                    LOG_D("Error reading from FIFO %s\n", strerror(errno));
+                    exit(EXIT_FAILURE);
+                }
+
+                LOG_D("Bytes read: %d\n", n_read);
+                LOG_D("Path transmitted: %s\n", data);
+                close(fd_fifo);
+
+                daemon_print(data);
+
+                exit(EXIT_SUCCESS);
+            }
+        }
+
+
+        LOG_D("\n\n\nDaemon running %d second\n\n\n", run_time);
 
         char* src_name = src;
         char* dst_name = dst;
@@ -92,7 +195,7 @@ void init_daemon(const char* src, const char* dst) {
         init_dest_dir(dst_name);
         traverse(src_name, dst_name, initial_indent);
 
-        time += 5;
+        run_time += sleep_time;
     }
 
 }
