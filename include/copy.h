@@ -33,6 +33,19 @@ int lookup(const char* name, const char* dir);
 /* copy src to dst, type specifies whether it is a regular file or a directory */
 void copy(char* src, char* dst, int type);
 
+/* create a backup directory dst_name or open if one already exists */
 void init_dest_dir(const char* dst_name);
 
+/* change modification time of a file/directory dest_name */
 void change_time(char* dest_name);
+
+/* init daemon process, monitoring src directory and backing it up into dst directory */
+void init_daemon(char* src, char* dst);
+
+/* kill daemon */
+void daemon_stop();
+
+/* print daemon logs in log_path directory (if used with rc interface program, then
+   by default log_path is current working directory) */
+void daemon_print(char* log_path);
+    
