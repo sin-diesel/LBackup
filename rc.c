@@ -20,6 +20,7 @@
 #define KILL 0
 #define PRINT 1
 
+#define MAX_PATH_SIZE 1024
 
 
 
@@ -66,7 +67,7 @@ int main (int argc, char** argv) {
         char buf[BUFSIZ];
         getcwd(buf, BUFSIZ);
         
-        n_write = write(fd_fifo, buf, BUFSIZ);
+        n_write = write(fd_fifo, buf, MAX_PATH_SIZE);
         if (n_write < 1) {
              printf("Error writing to FIFO: %s\n", strerror(errno));
         }

@@ -34,36 +34,42 @@ void daemon_print(char* log_path) {
     char data[BUFSIZ];
     data[BUFSIZ - 1] = '\0';
 
+    // open daemon logs for reading
     int log = open(daemon_path, O_RDONLY);
     if (log < 0) {
         LOG_D("Error opening daemon log file %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    LOG_D("log_path: %s\n", log_path);
+    //LOG_D("log_path: %s\n", log_path);
+
+    // open directory where logs should be printed to
     DIR* log_dir = opendir(log_path);
     if (log_dir == NULL) {
         LOG_D("Error opening log dir: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
+    // get fd of log_path directory 
     int df = dirfd(log_dir);
     if (dirfd < 0) {
          LOG_D("Error opening log dir descriptor   : %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    int output = openat(df, "user_log.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    // create user log file at log_path directory, or open if one already exists
+    int output = openat(df, "user_log.log", O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (output < 0) {
         LOG_D("Error creating user log: %s\n", strerror(errno));
-        output = openat(df, "user_log.txt", O_WRONLY);
+        output = openat(df, "user_log.log", O_WRONLY);
         if (output < 0) {
             LOG_D("Error opening user log: %s\n", strerror(errno));
         }
     }
 
-    for (int i = 0; i < 3; ++i) {
-        int n_read = read(log, data, BUFSIZ / 2);
+    int n_read = 0;
+    // copy all data from daemon logs to created user log
+    while ( (n_read = read(log, data, BUFSIZ / 2)) != 0) {
         if (n_read < 0) {
             LOG_D("Error reading from daemon log file: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
@@ -81,10 +87,12 @@ void daemon_print(char* log_path) {
 
 
     LOG_D("PRINTING LOGS, logs are in %s\n", log_path);
-    exit(EXIT_SUCCESS);
+    //exit(EXIT_SUCCESS);
 }
 
-void init_daemon(const char* src, const char* dst) {
+void init_daemon(char* src, char* dst) {
+
+    // process of initialization of daemon
     pid_t pid = fork();
 
     if (pid < 0) {
@@ -125,6 +133,8 @@ void init_daemon(const char* src, const char* dst) {
 
     close(fd);
 
+    /* open fifo in non-blocking mode, check with poll until rc program interface
+        transmits command */
     char* myfifo = "/tmp/reserv_fifo";
 
     int resop = mkfifo(myfifo, O_CREAT | 0666);
@@ -138,6 +148,7 @@ void init_daemon(const char* src, const char* dst) {
         exit(EXIT_FAILURE);
     }
 
+    
     LOG_D("Daemon initialized at %s\n", daemon_path);
 
     int run_time = 0;
@@ -149,12 +160,15 @@ void init_daemon(const char* src, const char* dst) {
         struct pollfd pfd;
         pfd.fd = fd_fifo;
         pfd.events = POLLIN;
+        pfd.revents = 0;
         char data[BUFSIZ];
-        data[BUFSIZ - 1] = 0;
+        data[BUFSIZ - 1] = '\0';
+        int events = 0;
 
-        int events = poll(&pfd, 1, 10000);
-        if (events > 0 && pfd.revents == POLLIN) {
+        events = poll(&pfd, 1, sleep_time * 1000);
+        if (events > 0 && pfd.revents & POLLIN) {
 
+            // reading command from fifo
             int n_read = read(fd_fifo, &data, sizeof(int));
             if (n_read != sizeof(int)) {
                 LOG_D("Error reading from FIFO %s\n", strerror(errno));
@@ -162,25 +176,31 @@ void init_daemon(const char* src, const char* dst) {
             }
             LOG_D("Command read from pipe: %d\n", *((int*) data));
 
+            // if command is 0, stop daemon
             if (*((int*) data) == 0) {
-
                 daemon_stop();
-
             } else if (*((int*) data) == 1) {
 
+                // if command is 1, print daemon logs and stop daemon
+                // also read log_path from fifo to data
                 n_read = read(fd_fifo, &data, BUFSIZ);
-                if (n_read < 0) {
-                    LOG_D("Error reading from FIFO %s\n", strerror(errno));
-                    exit(EXIT_FAILURE);
-                }
 
                 LOG_D("Bytes read: %d\n", n_read);
                 LOG_D("Path transmitted: %s\n", data);
                 close(fd_fifo);
+                int fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
+                if (fd_fifo < 0) {
+                    LOG_D("Error opening FIFO: %s\n", strerror(errno));
+                    exit(EXIT_FAILURE);
+                }
+                
 
                 daemon_print(data);
-
-                exit(EXIT_SUCCESS);
+                pfd.fd = fd_fifo;
+                pfd.events = POLLIN;
+                pfd.revents = 0;
+                //pfd.events = POLLIN;
+                //exit(EXIT_SUCCESS);
             }
         }
 

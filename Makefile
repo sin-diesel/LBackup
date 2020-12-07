@@ -22,3 +22,4 @@ main.o: $(SRC_DIR)/main.c
 .PHONY: clean
 clean:
 	rm *.o
+	rm user_log.log
