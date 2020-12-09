@@ -11,18 +11,22 @@ const char daemon_path[] = "/var/log/reserv_copy.log";
 FILE* log_file;
 FILE* log_daemon;
 
-#define LOG(expr, ...) log_file = fopen("log.txt", "a"); \
+#define LOG(expr, ...)  do { \
+                  log_file = fopen("log.txt", "a"); \
                   assert(log_file); \
                   fprintf(log_file, expr, __VA_ARGS__); \
                   fflush(log_file); \
-                  fclose(log_file);
+                  fclose(log_file); \
+                } while (0);
 
 
-#define LOG_D(expr, ...) log_file = fopen(daemon_path, "a"); \
+#define LOG_D(expr, ...)  do { \
+                  log_file = fopen(daemon_path, "a"); \
                   assert(log_file); \
                   fprintf(log_file, expr, __VA_ARGS__); \
                   fflush(log_file); \
-                  fclose(log_file);
+                  fclose(log_file);\
+                } while (0);
 
 void daemon_stop() {
     LOG_D("STOPPING DAEMON, logs are in %s\n", daemon_path);
@@ -82,12 +86,33 @@ void daemon_print(char* log_path) {
         }
     }
 
+    LOG_D("PRINTING LOGS, logs are in %s\n", log_path);
+
+    
     close(log);
     close(output);
-
-
-    LOG_D("PRINTING LOGS, logs are in %s\n", log_path);
     //exit(EXIT_SUCCESS);
+}
+
+int check_dest_dir(char* src_name, char* dst_name) {
+
+    int src_len = strlen(src_name);
+    int dst_len = strlen(dst_name);
+
+    printf("src path length: %d\n", src_len);
+    printf("dst path length: %d\n", dst_len);
+
+    int compare = strncmp(src_name, dst_name, src_len);
+
+    if (compare == 0)  {
+        printf("\033[1;31m");
+        printf("Error: ");
+        printf("\033[0m");
+        printf("Backup directory specified is in source directory.\n");
+        return 1;
+    }
+
+    return 0;
 }
 
 void init_daemon(char* src, char* dst) {
@@ -184,7 +209,9 @@ void init_daemon(char* src, char* dst) {
                 // if command is 1, print daemon logs and stop daemon
                 // also read log_path from fifo to data
                 n_read = read(fd_fifo, &data, BUFSIZ);
-
+                if (n_read == -1) {
+                    LOG_D("Error reading from FIFO: %s\n", strerror(errno));
+                }
                 LOG_D("Bytes read: %d\n", n_read);
                 LOG_D("Path transmitted: %s\n", data);
                 close(fd_fifo);
@@ -213,6 +240,12 @@ void init_daemon(char* src, char* dst) {
         int initial_indent = 1;
 
         init_dest_dir(dst_name);
+
+        int check = check_dest_dir(src_name, dst_name);
+        if (check == 1) {
+            exit(EXIT_FAILURE);
+        }
+
         traverse(src_name, dst_name, initial_indent);
 
         run_time += sleep_time;
@@ -298,7 +331,6 @@ void init_dest_dir(const char* dst_name) {
     if (errno != EEXIST) {
        LOG_D("Creating new backup directory: %s\n", strerror(errno));
     }
-    
 }
 
 void traverse(char* src_name, char* dest_name, int indent) {

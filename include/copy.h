@@ -26,9 +26,11 @@
    exist in dest_name, indend is a number for printing subdirectories with identation */
 void traverse(char* src_name, char* dest_name, int indent);
 
-/* find a file named name in directory dir, returns 1 on success and 0 if file
+/* find a file or dir named name in directory dir, returns 1 on success and 0 if file
    does not exists */
 int lookup(const char* name, const char* dir);
+
+int check_dest_dir(char* src_name, char* dst_name);
 
 /* copy src to dst, type specifies whether it is a regular file or a directory */
 void copy(char* src, char* dst, int type);

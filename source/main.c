@@ -20,6 +20,10 @@ int main(int argc, char** argv) {
     printf("Src dir: %s\n", src_path);
     printf("Dst dir: %s\n", dst_path);
 
+    int check = check_dest_dir(src_path, dst_path);
+    if (check == 1) {
+        exit(EXIT_FAILURE);
+    }
     init_daemon(src_path, dst_path);
 
     return 0;
