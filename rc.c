@@ -44,13 +44,12 @@ int main (int argc, char** argv) {
         printf("FIFO init error: %s\n", strerror(errno));
     }
 
-    int fd_fifo = open(myfifo, O_WRONLY);
-    if (fd_fifo < 0) {
-        printf("Error opening FIFO: %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
-
     if (strcmp(option, "-stop") == 0) {
+        int fd_fifo = open(myfifo, O_WRONLY);
+        if (fd_fifo < 0) {
+            printf("Error opening FIFO: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
 
         int data = KILL;
         int n_write = write(fd_fifo, &data, sizeof(int));
@@ -60,6 +59,12 @@ int main (int argc, char** argv) {
         close(fd_fifo);
 
     } else if (strcmp(option, "-print") == 0) {
+
+        int fd_fifo = open(myfifo, O_WRONLY);
+        if (fd_fifo < 0) {
+            printf("Error opening FIFO: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
 
         int data = PRINT;
         int n_write = write(fd_fifo, &data, sizeof(int));
@@ -78,6 +83,12 @@ int main (int argc, char** argv) {
 
         close(fd_fifo);
     } else if (strcmp(option, "-set") == 0) {
+
+        int fd_fifo = open(myfifo, O_WRONLY);
+        if (fd_fifo < 0) {
+            printf("Error opening FIFO: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
 
         // write command number to fifo
         int data = SET;
@@ -109,6 +120,10 @@ int main (int argc, char** argv) {
         }
 
         close(fd_fifo);
+    } else {
+        printf("usage: ./rc -s - stop daemon, -p - print logs, -set <src> <dst> \
+                        - set new backup source and destination\n"); \
+        exit(EXIT_FAILURE);
     }
 
     return 0;
