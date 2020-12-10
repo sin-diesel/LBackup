@@ -42,7 +42,7 @@ void init_dest_dir(const char* dst_name);
 void change_time(char* dest_name);
 
 /* init daemon process, monitoring src directory and backing it up into dst directory */
-void init_daemon(char* src, char* dst);
+void init_daemon(char* src, char* dst, int links_behaviour);
 
 /* kill daemon */
 void daemon_stop();

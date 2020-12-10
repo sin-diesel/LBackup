@@ -5,11 +5,16 @@
 
 #define MAX_PATH_SIZE 1024
 
+#define LINK_NO_DEREF 0
+#define LINK_DEREF 1
+
 #define ERROR(error) fprintf(stderr, "Error in line %d, func %s: %s\n", __LINE__, __func__, strerror(error))
 
 const char daemon_path[] = "/var/log/reserv_copy.log";
 FILE* log_file;
 FILE* log_daemon;
+
+int lnks;
 
 #define LOG(expr, ...)  do { \
                   log_file = fopen("log.txt", "a"); \
@@ -28,11 +33,14 @@ FILE* log_daemon;
                   fclose(log_file);\
                 } while (0);
 
+
+// --------------------------------------------------------
 void daemon_stop() {
     LOG_D("STOPPING DAEMON, logs are in %s\n", daemon_path);
     exit(EXIT_SUCCESS);
 }
 
+// --------------------------------------------------------
 void daemon_print(char* log_path) {
 
     char data[BUFSIZ];
@@ -95,6 +103,7 @@ void daemon_print(char* log_path) {
     //exit(EXIT_SUCCESS);
 }
 
+// --------------------------------------------------------
 int check_dest_dir(char* src_name, char* dst_name) {
 
     int src_len = strlen(src_name);
@@ -115,7 +124,8 @@ int check_dest_dir(char* src_name, char* dst_name) {
     return 0;
 }
 
-void init_daemon(char* src, char* dst) {
+// --------------------------------------------------------
+void init_daemon(char* src, char* dst, int links_behaviour) {
 
     // process of initialization of daemon
     pid_t pid = fork();
@@ -173,8 +183,13 @@ void init_daemon(char* src, char* dst) {
         exit(EXIT_FAILURE);
     }
 
-    
+    lnks = links_behaviour;
     LOG_D("Daemon initialized at %s\n", daemon_path);
+    if (links_behaviour == LINK_NO_DEREF) {
+        LOG_D("Links are NOT dereferenced, links_behaviour %d\n", links_behaviour);
+    } else if (links_behaviour == LINK_DEREF) {
+        LOG_D("Links are SET FOR dereferencing, links_behaviour %d\n", links_behaviour);
+    }
 
     int run_time = 0;
 
@@ -294,6 +309,7 @@ void init_daemon(char* src, char* dst) {
 
 }
 
+// --------------------------------------------------------
 int lookup(const char* name, const char* dir) { 
 
     DIR* directory = opendir(dir);
@@ -318,11 +334,12 @@ int lookup(const char* name, const char* dir) {
     return 0;
 }
 
+// --------------------------------------------------------
 void copy(char* src, char* dst, int type) {
     char cmd[] = "cp";
-    char* argv[5];
+    char* argv[6];
 
-    if (type == DT_DIR) {
+    if (type == DT_DIR || type == LINK_NO_DEREF) {
         argv[0] = cmd;
         argv[1] = "-r";
         argv[2] = src;
@@ -333,6 +350,13 @@ void copy(char* src, char* dst, int type) {
         argv[1] = src;
         argv[2] = dst;
         argv[3] = NULL;
+    } else if (type == LINK_DEREF) {
+        argv[0] = cmd;
+        argv[1] = "-r";
+        argv[2] = "-L";
+        argv[3] = src;
+        argv[4] = dst;
+        argv[5] = NULL;
     } else {
         fprintf(stderr, "No copy type recognized\n");
     }
@@ -346,6 +370,7 @@ void copy(char* src, char* dst, int type) {
     wait(&status);
 }
 
+// --------------------------------------------------------
 void change_time(char* dest_name) {
 
     char* argv[3];
@@ -367,6 +392,7 @@ void change_time(char* dest_name) {
     wait(&status);
 }
 
+// --------------------------------------------------------
 void init_dest_dir(const char* dst_name) {
     mkdir(dst_name, 0777);
     if (errno != EEXIST) {
@@ -374,6 +400,7 @@ void init_dest_dir(const char* dst_name) {
     }
 }
 
+// --------------------------------------------------------
 void traverse(char* src_name, char* dest_name, int indent) {
 
     char dest_path[MAX_PATH_SIZE];
@@ -397,14 +424,22 @@ void traverse(char* src_name, char* dest_name, int indent) {
             exit(-1);
         }
 
+        time_t rawtime;
+        struct tm* timeinfo;
+
+        time (&rawtime);
+        timeinfo = localtime(&rawtime);
+
         if (entry->d_type == DT_REG) {
 
             struct stat reg_info;
             fstatat(df, entry->d_name, &reg_info, 0);
 
-            LOG_D("%*s File %s, Time since last modification: %ld sec\n", indent, \
+
+            LOG_D("%*s File %s, Time since last modification: %ld sec, log time: %s\n", indent, \
                     "", entry->d_name, \
-                    reg_info.st_mtime);
+                    reg_info.st_mtime, \
+                    asctime (timeinfo));                 \
 
             // if file source_name not found in dest_name directory, copy it
             int exists = lookup(entry->d_name, dest_name);
@@ -478,6 +513,36 @@ void traverse(char* src_name, char* dest_name, int indent) {
             snprintf(dest_path, sizeof(dest_path), "%s/%s", dest_name, entry->d_name);
 
             traverse(src_path, dest_path, indent + 5);
+        } else if (entry->d_type == DT_LNK) {
+
+            // get symlink info
+            struct stat link_info;
+            fstatat(df, entry->d_name, &link_info, 0);
+
+            // skip . and .. directories may be unnecesary
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
+
+            LOG_D("%*s Symlink %s, Time since last modification: %ld\n", indent, \
+                    "", entry->d_name, link_info.st_mtime);
+
+            // searching for symlink d_name in dest_name, copy only link by default
+            //int exists = lookup(entry->d_name, dest_name);
+
+            char source_name[MAX_PATH_SIZE];
+            snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
+
+            // if links are not set for deref, only copy symlink
+            if (lnks == LINK_NO_DEREF) {
+                LOG_D("COPYING Symlink %s, to %s\n", source_name, dest_name);
+                copy(source_name, dest_name, LINK_NO_DEREF);
+            } else {
+                LOG_D("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", source_name, dest_name);
+                copy(source_name, dest_name, LINK_DEREF);
+            }
+            // do not search in directory that has just been copied
+            continue;
         } else {
             fprintf(stderr, "Not regular file or directory\n");
         }
