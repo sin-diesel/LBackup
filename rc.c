@@ -1,3 +1,7 @@
+
+ #define _XOPEN_SOURCE 600
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -15,8 +19,6 @@
 #include <sys/ipc.h>
 #include <dirent.h>
 
-#define _POSIX_C_SOURCE
-
 #define KILL 0
 #define PRINT 1
 #define SET 2
@@ -26,7 +28,7 @@
 
 
 int main (int argc, char** argv) {
-    if (argc < 2 || (argc > 2 && argc != 4)) {
+    if (argc < 2 || (argc > 2 && argc != 4) || (argc == 2 && (strcmp(argv[1], "-set") == 0))) {
         printf("usage: ./rc -s - stop daemon, -p - print logs, -set <src> <dst> \
                         - set new backup source and destination\n"); \
         exit(EXIT_FAILURE);
@@ -76,7 +78,7 @@ int main (int argc, char** argv) {
 
         close(fd_fifo);
     } else if (strcmp(option, "-set") == 0) {
-        
+
         // write command number to fifo
         int data = SET;
         int n_write = write(fd_fifo, &data, sizeof(int));
@@ -88,14 +90,12 @@ int main (int argc, char** argv) {
         char src_buf[MAX_PATH_SIZE];
         char dst_buf[MAX_PATH_SIZE];
 
+
         char* src = argv[2];
         char* dst = argv[3];
 
-        int src_len = strlen(argv[2]);
-        int dst_len = strlen(argv[3]);
-        
-        memcpy(src_buf, src, src_len);
-        memcpy(dst_buf, dst, dst_len);
+        realpath(src, src_buf);
+        realpath(dst, dst_buf);
         
         n_write = write(fd_fifo, src_buf, MAX_PATH_SIZE);
         if (n_write < 1) {

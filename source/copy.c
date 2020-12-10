@@ -268,7 +268,7 @@ void init_daemon(char* src, char* dst) {
                 if (fd_fifo < 0) {
                     LOG_D("Error opening FIFO: %s\n", strerror(errno));
                     exit(EXIT_FAILURE);
-                }
+                }   
             }
         }
 
