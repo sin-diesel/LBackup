@@ -19,14 +19,16 @@
 
 #define KILL 0
 #define PRINT 1
+#define SET 2
 
 #define MAX_PATH_SIZE 1024
 
 
 
 int main (int argc, char** argv) {
-    if (argc != 2) {
-        printf("usage: ./rc -s - stop daemon, ./rc -p - print logs\n");
+    if (argc < 2 || (argc > 2 && argc != 4)) {
+        printf("usage: ./rc -s - stop daemon, -p - print logs, -set <src> <dst> \
+                        - set new backup source and destination\n"); \
         exit(EXIT_FAILURE);
     }
 
@@ -46,7 +48,7 @@ int main (int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    if (strcmp(option, "-s") == 0) {
+    if (strcmp(option, "-stop") == 0) {
 
         int data = KILL;
         int n_write = write(fd_fifo, &data, sizeof(int));
@@ -55,7 +57,7 @@ int main (int argc, char** argv) {
         }
         close(fd_fifo);
 
-    } else if (strcmp(option, "-p") == 0) {
+    } else if (strcmp(option, "-print") == 0) {
 
         int data = PRINT;
         int n_write = write(fd_fifo, &data, sizeof(int));
@@ -68,6 +70,40 @@ int main (int argc, char** argv) {
         getcwd(buf, BUFSIZ);
         
         n_write = write(fd_fifo, buf, MAX_PATH_SIZE);
+        if (n_write < 1) {
+             printf("Error writing to FIFO: %s\n", strerror(errno));
+        }
+
+        close(fd_fifo);
+    } else if (strcmp(option, "-set") == 0) {
+        
+        // write command number to fifo
+        int data = SET;
+        int n_write = write(fd_fifo, &data, sizeof(int));
+        if (n_write != sizeof(int)) {
+            printf("Error writing command to FIFO: %s\n", strerror(errno));
+        }
+
+        // copy src and dst paths to larger buffers
+        char src_buf[MAX_PATH_SIZE];
+        char dst_buf[MAX_PATH_SIZE];
+
+        char* src = argv[2];
+        char* dst = argv[3];
+
+        int src_len = strlen(argv[2]);
+        int dst_len = strlen(argv[3]);
+        
+        memcpy(src_buf, src, src_len);
+        memcpy(dst_buf, dst, dst_len);
+        
+        n_write = write(fd_fifo, src_buf, MAX_PATH_SIZE);
+        if (n_write < 1) {
+             printf("Error writing to FIFO: %s\n", strerror(errno));
+        }
+
+
+         n_write = write(fd_fifo, dst_buf, MAX_PATH_SIZE);
         if (n_write < 1) {
              printf("Error writing to FIFO: %s\n", strerror(errno));
         }

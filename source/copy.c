@@ -39,11 +39,6 @@ void daemon_print(char* log_path) {
     data[BUFSIZ - 1] = '\0';
 
     // open daemon logs for reading
-    int log = open(daemon_path, O_RDONLY);
-    if (log < 0) {
-        LOG_D("Error opening daemon log file %s\n", strerror(errno));
-        exit(EXIT_FAILURE);
-    }
 
     //LOG_D("log_path: %s\n", log_path);
 
@@ -71,17 +66,23 @@ void daemon_print(char* log_path) {
         }
     }
 
+    int log = open(daemon_path, O_RDONLY);
+    if (log < 0) {
+        LOG_D("Error opening daemon log file %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
     int n_read = 0;
     // copy all data from daemon logs to created user log
     while ( (n_read = read(log, data, BUFSIZ / 2)) != 0) {
         if (n_read < 0) {
-            LOG_D("Error reading from daemon log file: %s\n", strerror(errno));
+            //LOG_D("Error reading from daemon log file: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
 
-        int n_write = write(output, data, BUFSIZ / 2);
+        int n_write = write(output, data, n_read);
         if (n_write < 0) {
-            LOG_D("Error writing to log file in cwd: %s\n", strerror(errno));
+            //LOG_D("Error writing to log file in cwd: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
@@ -97,10 +98,9 @@ void daemon_print(char* log_path) {
 int check_dest_dir(char* src_name, char* dst_name) {
 
     int src_len = strlen(src_name);
-    int dst_len = strlen(dst_name);
 
-    printf("src path length: %d\n", src_len);
-    printf("dst path length: %d\n", dst_len);
+    //printf("src path length: %d\n", src_len);
+    //printf("dst path length: %d\n", dst_len);
 
     int compare = strncmp(src_name, dst_name, src_len);
 
@@ -182,15 +182,21 @@ void init_daemon(char* src, char* dst) {
         
         const int sleep_time = 10; // sleeping time in seconds
 
+        char* src_name = NULL;
+        char* dst_name = NULL;
+
         struct pollfd pfd;
         pfd.fd = fd_fifo;
         pfd.events = POLLIN;
         pfd.revents = 0;
+
         char data[BUFSIZ];
         data[BUFSIZ - 1] = '\0';
+
         int events = 0;
 
         events = poll(&pfd, 1, sleep_time * 1000);
+
         if (events > 0 && pfd.revents & POLLIN) {
 
             // reading command from fifo
@@ -203,6 +209,7 @@ void init_daemon(char* src, char* dst) {
 
             // if command is 0, stop daemon
             if (*((int*) data) == 0) {
+                close(fd_fifo);
                 daemon_stop();
             } else if (*((int*) data) == 1) {
 
@@ -215,27 +222,61 @@ void init_daemon(char* src, char* dst) {
                 LOG_D("Bytes read: %d\n", n_read);
                 LOG_D("Path transmitted: %s\n", data);
                 close(fd_fifo);
+
+                // reopen
                 int fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
                 if (fd_fifo < 0) {
                     LOG_D("Error opening FIFO: %s\n", strerror(errno));
                     exit(EXIT_FAILURE);
                 }
                 
-
                 daemon_print(data);
+
                 pfd.fd = fd_fifo;
                 pfd.events = POLLIN;
                 pfd.revents = 0;
                 //pfd.events = POLLIN;
                 //exit(EXIT_SUCCESS);
+            } else if (*((int*) data) == 2) {
+
+                char new_src[BUFSIZ];
+                char new_dst[BUFSIZ];
+
+                // if command is 2, set another file for backing up and another directory
+
+                // read new src path
+                n_read = read(fd_fifo, new_src, MAX_PATH_SIZE);
+                if (n_read == -1) {
+                    LOG_D("Error reading from FIFO: %s\n", strerror(errno));
+                }
+                LOG_D("Bytes read: %d\n", n_read);
+                LOG_D("New src path transmitted: %s\n", new_src);
+
+                // read new dst path
+                n_read = read(fd_fifo, new_dst, MAX_PATH_SIZE);
+                if (n_read == -1) {
+                    LOG_D("Error reading from FIFO: %s\n", strerror(errno));
+                }
+                LOG_D("Bytes read: %d\n", n_read);
+                LOG_D("New dst backup path transmitted: %s\n", new_dst);
+                close(fd_fifo);
+
+                src = new_src;
+                dst = new_dst;
+
+                fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
+                if (fd_fifo < 0) {
+                    LOG_D("Error opening FIFO: %s\n", strerror(errno));
+                    exit(EXIT_FAILURE);
+                }
             }
         }
 
 
         LOG_D("\n\n\nDaemon running %d second\n\n\n", run_time);
 
-        char* src_name = src;
-        char* dst_name = dst;
+        src_name = src;
+        dst_name = dst;
 
         int initial_indent = 1;
 
