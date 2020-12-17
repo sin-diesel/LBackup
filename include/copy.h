@@ -50,4 +50,6 @@ void daemon_stop();
 /* print daemon logs in log_path directory (if used with rc interface program, then
    by default log_path is current working directory) */
 void daemon_print(char* log_path);
+
+int check_source_dir(char* source_path);
     

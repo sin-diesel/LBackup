@@ -29,7 +29,9 @@ int main(int argc, char** argv) {
     printf("Links behaviour: %d\n", links_behaviour);
 
     int check = check_dest_dir(src_path, dst_path);
-    if (check == 1) {
+    int exists = check_source_dir(src_path);
+    
+    if (check == 1 || exists == 0) {
         exit(EXIT_FAILURE);
     }
     init_daemon(src_path, dst_path, links_behaviour);

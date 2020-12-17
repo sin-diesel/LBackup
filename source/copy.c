@@ -125,6 +125,18 @@ int check_dest_dir(char* src_name, char* dst_name) {
 }
 
 // --------------------------------------------------------
+int check_source_dir(char* source_path) {
+    int fd = open(source_path, O_RDONLY);
+
+    if (fd < 0) {
+        perror("Error opening source directory");
+    }
+    close(fd);
+
+    return 1;
+}
+
+// --------------------------------------------------------
 void init_daemon(char* src, char* dst, int links_behaviour) {
 
     // process of initialization of daemon
