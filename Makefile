@@ -21,3 +21,4 @@ main.o: $(SRC_DIR)/main.c
 .PHONY: clean
 clean:
 	rm *.o
+	rm lbp
