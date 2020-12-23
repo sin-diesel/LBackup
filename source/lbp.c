@@ -1,20 +1,25 @@
-#define _XOPEN_SOURCE  600 
+/* This is a source file for LBackup program with code for all functions */
 
-#include "copy.h"
-#include <poll.h>
+
+/* This is defined for some sys calls */
+#define _XOPEN_SOURCE  600
+#define _GNU_SOURCE
+
+#include "lbp.h"
 
 #define MAX_PATH_SIZE 1024
 
-#define LINK_NO_DEREF 0
-#define LINK_DEREF 1
+#define LINKS_NO_DEREF 0
+#define LINKS_DEREF 1
 
 #define ERROR(error) fprintf(stderr, "Error in line %d, func %s: %s\n", __LINE__, __func__, strerror(error))
+
+int lnk_type = 0;
 
 const char daemon_path[] = "/var/log/reserv_copy.log";
 FILE* log_file;
 FILE* log_daemon;
 
-int lnks;
 
 #define LOG(expr, ...)  do { \
                   log_file = fopen("log.txt", "a"); \
@@ -38,6 +43,48 @@ int lnks;
 void daemon_stop() {
     LOG_D("STOPPING DAEMON, logs are in %s\n", daemon_path);
     exit(EXIT_SUCCESS);
+}
+
+//----------------------------------------------------------------------
+int check_args(int argc, char** argv) {
+
+    const char links_shallow[] = "-H";
+    const char links_deep[] = "-L";
+    char* links_type = NULL;
+
+    int deref = -1;
+    int no_deref = -1;
+
+    if (argc == 3) { /* no info about links dereferencing, shallow copy by default */
+        lnk_type = LINKS_NO_DEREF;
+    } else if (argc == 4) { /* check if the argument for links is a correct value */
+        links_type = argv[3];
+        no_deref = strcmp(links_type, links_shallow);
+        deref = strcmp(links_type, links_deep);
+        if (deref != 0 && no_deref != 0) {
+
+                printf("\033[0;31m"); /* set color to red */
+                printf("error: ");
+                printf("\033[0m"); /* reset color */
+                printf("unkown option: %s\n", links_type); 
+                return -1;
+        }
+
+        /* set links type, lnk_type is a global variable defined in lbp.c */
+        if (deref == 0) {
+            lnk_type = LINKS_DEREF; 
+            printf("Links have been set to dereferencing\n");
+        } else {
+            lnk_type = LINKS_NO_DEREF; 
+            printf("Links have been set to no-dereferencing\n");
+        }
+
+    } else if (argc < 3 || argc > 4) {
+        printf("usage: ./lbp <src> <dest> <links_type>\n");
+        return -1;
+    }
+
+    return 0;
 }
 
 // --------------------------------------------------------
@@ -195,11 +242,11 @@ void init_daemon(char* src, char* dst, int links_behaviour) {
         exit(EXIT_FAILURE);
     }
 
-    lnks = links_behaviour;
+    lnk_type = links_behaviour;
     LOG_D("Daemon initialized at %s\n", daemon_path);
-    if (links_behaviour == LINK_NO_DEREF) {
+    if (links_behaviour == LINKS_NO_DEREF) {
         LOG_D("Links are NOT dereferenced, links_behaviour %d\n", links_behaviour);
-    } else if (links_behaviour == LINK_DEREF) {
+    } else if (links_behaviour == LINKS_DEREF) {
         LOG_D("Links are SET FOR dereferencing, links_behaviour %d\n", links_behaviour);
     }
 
@@ -351,7 +398,7 @@ void copy(char* src, char* dst, int type) {
     char cmd[] = "cp";
     char* argv[6];
 
-    if (type == DT_DIR || type == LINK_NO_DEREF) {
+    if (type == DT_DIR || type == LINKS_NO_DEREF) {
         argv[0] = cmd;
         argv[1] = "-r";
         argv[2] = src;
@@ -362,7 +409,7 @@ void copy(char* src, char* dst, int type) {
         argv[1] = src;
         argv[2] = dst;
         argv[3] = NULL;
-    } else if (type == LINK_DEREF) {
+    } else if (type == LINKS_DEREF) {
         argv[0] = cmd;
         argv[1] = "-r";
         argv[2] = "-L";
@@ -546,12 +593,12 @@ void traverse(char* src_name, char* dest_name, int indent) {
             snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
 
             // if links are not set for deref, only copy symlink
-            if (lnks == LINK_NO_DEREF) {
+            if (lnk_type == LINKS_NO_DEREF) {
                 LOG_D("COPYING Symlink %s, to %s\n", source_name, dest_name);
-                copy(source_name, dest_name, LINK_NO_DEREF);
+                copy(source_name, dest_name, LINKS_NO_DEREF);
             } else {
                 LOG_D("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", source_name, dest_name);
-                copy(source_name, dest_name, LINK_DEREF);
+                copy(source_name, dest_name, LINKS_DEREF);
             }
             // do not search in directory that has just been copied
             continue;

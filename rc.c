@@ -107,6 +107,7 @@ int main (int argc, char** argv) {
 
         realpath(src, src_buf);
         realpath(dst, dst_buf);
+
         
         n_write = write(fd_fifo, src_buf, MAX_PATH_SIZE);
         if (n_write < 1) {
