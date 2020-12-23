@@ -11,7 +11,6 @@ EXECUTABLES = $(SOURCES:.c=)
 .PHONY: all
 all: $(OBJECTS)
 	$(CC) $(CCFLAGS) $(OBJECTS) -o lbp
-	# $(CC) $(CCFLAGS) lbp-set.c -o lbp-set
 
 lbp.o: $(SRC_DIR)/lbp.c
 	$(CC) $(CCFLAGS) $(SRC_DIR)/lbp.c -c -o lbp.o
@@ -22,4 +21,3 @@ main.o: $(SRC_DIR)/main.c
 .PHONY: clean
 clean:
 	rm *.o
-	# rm user_log.log

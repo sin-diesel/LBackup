@@ -87,6 +87,31 @@ int check_args(int argc, char** argv) {
     return 0;
 }
 
+//----------------------------------------------------------------------
+int check_dest_dir(char* src, char* dst) {
+
+    int src_len = strlen(src);
+    int compare = strncmp(src, dst, src_len);
+
+    if (compare == 0)  {
+        return 1;
+    }
+
+    return 0;
+}
+
+//----------------------------------------------------------------------
+int check_source_dir(char* src) {
+    int fd = open(src, O_RDONLY);
+
+    if (fd < 0) {
+        return -1;
+    }
+    close(fd);
+
+    return 0;
+}
+
 // --------------------------------------------------------
 void daemon_print(char* log_path) {
 
@@ -151,38 +176,6 @@ void daemon_print(char* log_path) {
 }
 
 // --------------------------------------------------------
-int check_dest_dir(char* src_name, char* dst_name) {
-
-    int src_len = strlen(src_name);
-
-    //printf("src path length: %d\n", src_len);
-    //printf("dst path length: %d\n", dst_len);
-
-    int compare = strncmp(src_name, dst_name, src_len);
-
-    if (compare == 0)  {
-        printf("\033[1;31m");
-        printf("Error: ");
-        printf("\033[0m");
-        printf("Backup directory specified is in source directory.\n");
-        return 1;
-    }
-
-    return 0;
-}
-
-// --------------------------------------------------------
-int check_source_dir(char* source_path) {
-    int fd = open(source_path, O_RDONLY);
-
-    if (fd < 0) {
-        perror("Error opening source directory");
-    }
-    close(fd);
-
-    return 1;
-}
-
 // --------------------------------------------------------
 void init_daemon(char* src, char* dst, int links_behaviour) {
 
