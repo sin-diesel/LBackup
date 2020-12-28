@@ -15,6 +15,14 @@
 
 #define MAX_PATH_SIZE 1024
 
+#define ERROR_CLR(error)  do {                                          \
+                            printf("\033[0;31m"); /* set color to red */ \
+                            printf("error: ");                          \
+                            printf("\033[0m"); /* reset color */            \
+                            printf("%s\n", error);  }                       \
+                        while (0);                                      \
+
+
 
 int main(int argc, char** argv) {
 
@@ -28,7 +36,6 @@ int main(int argc, char** argv) {
     if (args_check < 0) {
         exit(EXIT_FAILURE);
     }
-    printf("Starting program...\n");
 
     realpath(argv[1], src_path); /* convert path to absolute */
     realpath(argv[2], dst_path);
@@ -38,21 +45,17 @@ int main(int argc, char** argv) {
 
     dir_check = check_dest_dir(src_path, dst_path);
     if (dir_check == 1) {
-        printf("\033[0;31m"); /* set color to red */
-        printf("error: ");
-        printf("\033[0m"); /* reset color */
-        printf("Backup directory is in source directory.\n");
+        ERROR_CLR("Backup directory specified as destination\n");
         exit(EXIT_FAILURE);
     }
     
     dir_check = check_source_dir(src_path);
     if (dir_check == -1) {
-        printf("\033[0;31m"); /* set color to red */
-        printf("error: ");
-        printf("\033[0m"); /* reset color */
-        printf("Source directory does not exist.\n");
+        ERROR_CLR("Source directory does not exist.\n");
         exit(EXIT_FAILURE);
     }
+
+    printf("Starting program...\n");
     init_daemon(src_path, dst_path, lnk_type);
 
     return 0;
