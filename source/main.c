@@ -11,6 +11,12 @@
 
 /* These have been defined to use several systems calls not available otherwise */
 
+/* TODO
+1) add each log printing time
+2) refactor program interface
+3) refactor log printing in general for easier understanding 
+4) add readme */
+
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 
@@ -65,5 +71,5 @@ int main(int argc, char** argv) {
     run_backup(src_path, dst_path);
 
     return 0;
-    
+
 }
