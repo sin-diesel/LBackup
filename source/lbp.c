@@ -8,6 +8,8 @@
 #include "lbp.h"
 
 #define MAX_PATH_SIZE 1024
+#define INDENT_SIZE 8 /* this is value by which indent is increased in each log
+                        file directory entry */
 
 #define LINKS_NO_DEREF 0
 #define LINKS_DEREF 1
@@ -25,7 +27,7 @@
 /* Logger macros */
 FILE* log_file;
 int lnk_type = 0; /* this specifies whether to dereference links or not to */
-const char log_path[] = "/var/log/reserv_copy.log";
+const char log_path[] = "/var/log/lbp.log";
 
 #define LOG(expr, ...)  do { \
                   log_file = fopen(log_path, "a");    \
@@ -35,13 +37,6 @@ const char log_path[] = "/var/log/reserv_copy.log";
                   fclose(log_file);                      \
                 } while (0);
 
-// --------------------------------------------------------
-void daemon_stop() {
-    LOG("STOPPING DAEMON, logs are in %s\n", log_path);
-    exit(EXIT_SUCCESS);
-}
-
-//----------------------------------------------------------------------
 int check_args(int argc, char** argv) {
 
     const char links_shallow[] = "-H";
@@ -58,12 +53,11 @@ int check_args(int argc, char** argv) {
         no_deref = strcmp(links_type, links_shallow);
         deref = strcmp(links_type, links_deep);
         if (deref != 0 && no_deref != 0) {
-
-                printf("\033[0;31m"); /* set color to red */
-                printf("error: ");
-                printf("\033[0m"); /* reset color */
-                printf("unkown option: %s\n", links_type); 
-                return -1;
+            printf("\033[0;31m"); /* set color to red */
+            printf("error: ");
+            printf("\033[0m"); /* reset color */
+            printf("unkown option: %s\n", links_type); 
+            return -1;
         }
 
         /* set links type, lnk_type is a global variable defined in lbp.c */
@@ -153,7 +147,31 @@ void init_daemon(char* src, char* dst, int links_behaviour) {
 
     /* open fifo in non-blocking mode, check with poll until rc program interface
         transmits command */
+
+    lnk_type = links_behaviour;
+
+    LOG("Daemon log initialized at %s\n", log_path);
+    if (links_behaviour == LINKS_NO_DEREF) {
+        LOG("Links are NOT dereferenced, links_behaviour %d\n", links_behaviour);
+    } else if (links_behaviour == LINKS_DEREF) {
+        LOG("Links are SET FOR dereferencing, links_behaviour %d\n", links_behaviour);
+    }
+
+}
+
+//----------------------------------------------------------------------
+void run_backup(char* src, char* dst) {
+
+    const int sleep_time = 10; // sleeping time in seconds
+    int run_time = 0;
     char* myfifo = "/tmp/lbp_fifo";
+    struct pollfd pfd;
+
+    char new_src[BUFSIZ];
+    char new_dst[BUFSIZ];
+
+    char data[BUFSIZ];
+    data[BUFSIZ - 1] = '\0';
 
     int resop = mkfifo(myfifo, O_CREAT | 0666);
     if (resop < 0) {
@@ -166,189 +184,301 @@ void init_daemon(char* src, char* dst, int links_behaviour) {
         exit(EXIT_FAILURE);
     }
 
-    lnk_type = links_behaviour;
+    pfd.fd = fd_fifo;
+    pfd.events = POLLIN;
+    pfd.revents = 0;
 
-    LOG("Daemon log initialized at %s\n", log_path);
-    if (links_behaviour == LINKS_NO_DEREF) {
-        LOG("Links are NOT dereferenced, links_behaviour %d\n", links_behaviour);
-    } else if (links_behaviour == LINKS_DEREF) {
-        LOG("Links are SET FOR dereferencing, links_behaviour %d\n", links_behaviour);
-    }
+    while(1) {
 
-    int run_time = 0;
+        int events = 0;
+        events = poll(&pfd, 1, sleep_time * 1000); /* multiplied by 1000 for milliseconds */
 
-    while (1) {
+        if (events > 0 && pfd.revents & POLLIN) { /* if there is data in fifo */
+            /* reading command from fifo */
+            int n_read = read(fd_fifo, &data, sizeof(int));
+            if (n_read != sizeof(int)) {
+                LOG("Error reading from FIFO %s\n", strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+            LOG("Command read from pipe: %d\n", *((int*) data));
 
-    }
+            /* if command is 0, stop daemon */
+            if (*((int*) data) == 0) {
+                close(fd_fifo);
+                daemon_stop();
+            } else if (*((int*) data) == 1) {
 
-    // while(1) {
-        
-    //     const int sleep_time = 10; // sleeping time in seconds
+                /* if command is 1, print daemon logs and stop daemon
+                 also read log_path from fifo to data */
+                n_read = read(fd_fifo, &data, BUFSIZ);
+                if (n_read == -1) {
+                    LOG("Error reading from FIFO: %s\n", strerror(errno));
+                }
+                LOG("Bytes read: %d\n", n_read);
+                LOG("Path transmitted: %s\n", data);
+                close(fd_fifo);
 
-    //     char* src_name = NULL;
-    //     char* dst_name = NULL;
-
-    //     struct pollfd pfd;
-    //     pfd.fd = fd_fifo;
-    //     pfd.events = POLLIN;
-    //     pfd.revents = 0;
-
-    //     char data[BUFSIZ];
-    //     data[BUFSIZ - 1] = '\0';
-
-    //     int events = 0;
-
-    //     events = poll(&pfd, 1, sleep_time * 1000);
-
-    //     if (events > 0 && pfd.revents & POLLIN) {
-
-    //         // reading command from fifo
-    //         int n_read = read(fd_fifo, &data, sizeof(int));
-    //         if (n_read != sizeof(int)) {
-    //             LOG("Error reading from FIFO %s\n", strerror(errno));
-    //             exit(EXIT_FAILURE);
-    //         }
-    //         LOG("Command read from pipe: %d\n", *((int*) data));
-
-    //         // if command is 0, stop daemon
-    //         if (*((int*) data) == 0) {
-    //             close(fd_fifo);
-    //             daemon_stop();
-    //         } else if (*((int*) data) == 1) {
-
-    //             // if command is 1, print daemon logs and stop daemon
-    //             // also read log_path from fifo to data
-    //             n_read = read(fd_fifo, &data, BUFSIZ);
-    //             if (n_read == -1) {
-    //                 LOG("Error reading from FIFO: %s\n", strerror(errno));
-    //             }
-    //             LOG("Bytes read: %d\n", n_read);
-    //             LOG("Path transmitted: %s\n", data);
-    //             close(fd_fifo);
-
-    //             // reopen
-    //             int fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
-    //             if (fd_fifo < 0) {
-    //                 LOG("Error opening FIFO: %s\n", strerror(errno));
-    //                 exit(EXIT_FAILURE);
-    //             }
+                // reopen
+                int fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
+                if (fd_fifo < 0) {
+                    LOG("Error opening FIFO: %s\n", strerror(errno));
+                    exit(EXIT_FAILURE);
+                }
                 
-    //             daemon_print(data);
+                daemon_print(data);
 
-    //             pfd.fd = fd_fifo;
-    //             pfd.events = POLLIN;
-    //             pfd.revents = 0;
-    //             //pfd.events = POLLIN;
-    //             //exit(EXIT_SUCCESS);
-    //         } else if (*((int*) data) == 2) {
+                pfd.fd = fd_fifo;
+                pfd.events = POLLIN;
+                pfd.revents = 0;
+            } else if (*((int*) data) == 2) {
+                /* if command is 2, set another file for backing up and another directory */
 
-    //             char new_src[BUFSIZ];
-    //             char new_dst[BUFSIZ];
+                /* read new src path */
+                n_read = read(fd_fifo, new_src, MAX_PATH_SIZE);
+                if (n_read == -1) {
+                    LOG("Error reading from FIFO: %s\n", strerror(errno));
+                }
+                LOG("Bytes read: %d\n", n_read);
+                LOG("New src path transmitted: %s\n", new_src);
 
-    //             // if command is 2, set another file for backing up and another directory
+                /* read new dst path */
+                n_read = read(fd_fifo, new_dst, MAX_PATH_SIZE);
+                if (n_read == -1) {
+                    LOG("Error reading from FIFO: %s\n", strerror(errno));
+                }
+                LOG("Bytes read: %d\n", n_read);
+                LOG("New dst backup path transmitted: %s\n", new_dst);
+                close(fd_fifo);
 
-    //             // read new src path
-    //             n_read = read(fd_fifo, new_src, MAX_PATH_SIZE);
-    //             if (n_read == -1) {
-    //                 LOG("Error reading from FIFO: %s\n", strerror(errno));
-    //             }
-    //             LOG("Bytes read: %d\n", n_read);
-    //             LOG("New src path transmitted: %s\n", new_src);
+                src = new_src;
+                dst = new_dst;
 
-    //             // read new dst path
-    //             n_read = read(fd_fifo, new_dst, MAX_PATH_SIZE);
-    //             if (n_read == -1) {
-    //                 LOG("Error reading from FIFO: %s\n", strerror(errno));
-    //             }
-    //             LOG("Bytes read: %d\n", n_read);
-    //             LOG("New dst backup path transmitted: %s\n", new_dst);
-    //             close(fd_fifo);
+                fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
+                if (fd_fifo < 0) {
+                    LOG("Error opening FIFO: %s\n", strerror(errno));
+                    exit(EXIT_FAILURE);
+                }   
+            }
+        }
+        LOG("\n\n\nDaemon running %d second\n\n\n", run_time);
 
-    //             src = new_src;
-    //             dst = new_dst;
+        int initial_indent = 1; /* starting with 1 indent */
+        init_dest_dir(dst);
 
-    //             fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
-    //             if (fd_fifo < 0) {
-    //                 LOG("Error opening FIFO: %s\n", strerror(errno));
-    //                 exit(EXIT_FAILURE);
-    //             }   
-    //         }
-    //     }
+        int check = check_dest_dir(src, dst);
+        if (check == 1) {
+            exit(EXIT_FAILURE);
+        }
 
+        traverse(src, dst, initial_indent);
 
-    //     LOG("\n\n\nDaemon running %d second\n\n\n", run_time);
-
-    //     src_name = src;
-    //     dst_name = dst;
-
-    //     int initial_indent = 1;
-
-    //     init_dest_dir(dst_name);
-
-    //     int check = check_dest_dir(src_name, dst_name);
-    //     if (check == 1) {
-    //         exit(EXIT_FAILURE);
-    //     }
-
-    //     traverse(src_name, dst_name, initial_indent);
-
-    //     run_time += sleep_time;
-    // }
+        run_time += sleep_time;
+    }
 
 }
 
 
-// --------------------------------------------------------
+//----------------------------------------------------------------------
+void traverse(char* src, char* dst, int indent) {
+
+    char dst_path[MAX_PATH_SIZE]; /* destination path buffer */
+    char src_path[MAX_PATH_SIZE];
+
+    struct dirent* entry = NULL;
+    DIR* dir = NULL;
+    DIR* dst_dir = NULL;
+    int df = 0;
+    // time_t rawtime;
+    // struct tm* timeinfo = NULL;
+    struct stat src_info;
+    struct stat dst_info;
+    struct stat link_info;
+
+    strcpy(dst_path, dst); /* copying dst full name to buffer */
+
+    dir = opendir(src);
+    if (dir == NULL) {
+        LOG("Failed opening src directory, %s\n", strerror(errno));   
+        exit(-1);
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        assert(entry);
+
+        df = dirfd(dir);
+        if (df < 0) {
+            LOG("Failed opening fd of  src directory, %s\n", strerror(errno));   
+            exit(-1);
+        }
+
+        // time (&rawtime); /* for printing time in log */
+        // timeinfo = localtime(&rawtime);
+
+        if (entry->d_type == DT_REG) { /* check if the file type is a regular file */
+
+            fstatat(df, entry->d_name, &src_info, 0);
+
+            LOG("%*s File %s, Time since last modification: %ld sec\n", indent, \
+                    "", entry->d_name, \
+                    src_info.st_mtime);             
+
+            /* if file d_name not found in dst directory, copy it */
+            int exists = lookup(entry->d_name, dst);
+            if (!exists) {
+                snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+                LOG("NOT BACKUPED File %s, copying to %s\n", src, dst);
+                copy(src_path, dst_path,  DT_REG);
+
+            }
+
+            /* if it has been found, compare last modified times, if they differ copy again */
+
+            dst_dir = opendir(dst);
+            if (dst_dir < 0) {
+                LOG("Failed opening dst directory, %s\n", strerror(errno));   
+                exit(-1);
+            }
+
+            int dstf = dirfd(dst_dir);
+            if (dstf < 0) {
+                LOG("Failed opening fd of dst directory, %s\n", strerror(errno));   
+                exit(-1);
+            }
+            
+            fstatat(dstf, entry->d_name, &dst_info, 0);
+            LOG("%*s File(in destination directory) %s, Time since last modification: %ld sec (compared with %ld in source)\n", indent, \
+                    "", entry->d_name, \
+                    dst_info.st_mtime, src_info.st_mtime);
+            closedir(dst_dir);
+
+            if (dst_info.st_mtime < src_info.st_mtime) {
+                char source_name[MAX_PATH_SIZE];
+                snprintf(source_name, sizeof(source_name), "%s/%s", src, entry->d_name);
+                LOG("UPDATING file %s\n", source_name);
+                copy(source_name, dst,  DT_REG);
+                change_time(dst);
+            }
+                                    
+        } else if (entry->d_type == DT_DIR) {
+
+            fstatat(df, entry->d_name, &src_info, 0);
+
+            /* skip . and .. directories */
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
+
+            LOG("%*s Dir %s, Time since last modification: %ld\n", indent, \
+                    "", entry->d_name, src_info.st_mtime);
+
+            /* searching for directory d_name in dest_name, if does not exist - copy recursively */
+            int exists = lookup(entry->d_name, dst);
+
+            if (!exists) {
+                snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+                LOG("NOT BACKUPED Dir %s, copying to %s\n", src, dst);
+                copy(src_path, dst_path, DT_DIR);
+                /* do not search in directory that has just been copied */
+                continue;
+            }
+
+            /* update path for seraching in subdirectory */
+            snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+            snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
+
+            /* recursive copy */
+            traverse(src_path, dst_path, indent + INDENT_SIZE);
+
+        } else if (entry->d_type == DT_LNK) {
+
+            /* get symlink info */
+            fstatat(df, entry->d_name, &link_info, 0);
+
+            /* skip . and .. directories may be unnecesary */
+            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                continue;
+            }
+
+            LOG("%*s Symlink %s, Time since last modification: %ld\n", indent, \
+                    "", entry->d_name, link_info.st_mtime);
+
+            /* searching for symlink d_name in dest_name, copy only link by default */
+
+            snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+
+            /* if links are not set for deref, only copy symlink */
+            if (lnk_type == LINKS_NO_DEREF) {
+                LOG("COPYING Symlink %s, to %s\n", src_path, dst_path);
+                copy(src_path, dst_path, LINKS_NO_DEREF);
+            } else {
+                LOG("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", src_path, dst_path);
+                copy(src_path, dst_path, LINKS_DEREF);
+            }
+            /* do not search in directory that has just been copied */
+            continue;
+        } else {
+            fprintf(stderr, "Not regular file or directory\n");
+        }
+    }
+
+    closedir(dir);
+}
+
+//----------------------------------------------------------------------
+void daemon_stop() {
+    LOG("STOPPING DAEMON, logs are in %s\n", log_path);
+    exit(EXIT_SUCCESS);
+}
+
+
+//----------------------------------------------------------------------
 void daemon_print(char* log_path) {
 
     char data[BUFSIZ];
     data[BUFSIZ - 1] = '\0';
+    DIR* log_dir = NULL;
 
-    // open daemon logs for reading
-
-    //LOG("log_path: %s\n", log_path);
-
-    // open directory where logs should be printed to
-    DIR* log_dir = opendir(log_path);
+    /* open daemon logs for reading */
+    /* open directory where logs should be printed to */
+    log_dir = opendir(log_path);
     if (log_dir == NULL) {
         LOG("Error opening log dir: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    // get fd of log_path directory 
+    /* get fd of log_path directory */
     int df = dirfd(log_dir);
     if (dirfd < 0) {
-         LOG("Error opening log dir descriptor   : %s\n", strerror(errno));
+        LOG("Error opening log dir descriptor   : %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
-    // create user log file at log_path directory, or open if one already exists
-    int output = openat(df, "user_log.log", O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    /* create user log file at log_path directory, or open if one already exists */
+    int output = openat(df, "lbackup.log", O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (output < 0) {
-        LOG("Error creating user log: %s\n", strerror(errno));
-        output = openat(df, "user_log.log", O_WRONLY);
+        LOG("Error creating log: %s\n", strerror(errno));
+        output = openat(df, "lbackup.log", O_WRONLY);
         if (output < 0) {
-            LOG("Error opening user log: %s\n", strerror(errno));
+            LOG("Error opening log: %s\n", strerror(errno));
         }
     }
 
     int log = open(log_path, O_RDONLY);
     if (log < 0) {
-        LOG("Error opening daemon log file %s\n", strerror(errno));
+        LOG("Error opening /var/log file %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
 
     int n_read = 0;
-    // copy all data from daemon logs to created user log
-    while ( (n_read = read(log, data, BUFSIZ / 2)) != 0) {
+    /* copy all data from /var/log to created log */
+    while ( (n_read = read(log, data, BUFSIZ / 2)) != 0) { /* divided by 2 simply for safety
+                                                                precautions */
         if (n_read < 0) {
-            //LOG("Error reading from daemon log file: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
 
         int n_write = write(output, data, n_read);
         if (n_write < 0) {
-            //LOG("Error writing to log file in cwd: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
     }
@@ -358,12 +488,9 @@ void daemon_print(char* log_path) {
     
     close(log);
     close(output);
-    //exit(EXIT_SUCCESS);
 }
 
-// --------------------------------------------------------
-// --------------------------------------------------------
-// --------------------------------------------------------
+//----------------------------------------------------------------------
 int lookup(const char* name, const char* dir) { 
 
     DIR* directory = opendir(dir);
@@ -378,7 +505,7 @@ int lookup(const char* name, const char* dir) {
         assert(entry);
 
         if (strcmp(entry->d_name, name) == 0) {
-            LOG("Enrty %s exists\n", entry->d_name);
+            LOG("Entry %s exists\n", entry->d_name);
             closedir(directory);
             return 1;
         }
@@ -388,7 +515,7 @@ int lookup(const char* name, const char* dir) {
     return 0;
 }
 
-// --------------------------------------------------------
+//----------------------------------------------------------------------
 void copy(char* src, char* dst, int type) {
     char cmd[] = "cp";
     char* argv[6];
@@ -424,12 +551,12 @@ void copy(char* src, char* dst, int type) {
     wait(&status);
 }
 
-// --------------------------------------------------------
-void change_time(char* dest_name) {
+//----------------------------------------------------------------------
+void change_time(char* dst) {
 
     char* argv[3];
     argv[0] = "-m";
-    argv[1] = dest_name;
+    argv[1] = dst;
     argv[2] = NULL;
 
     int status = 0;
@@ -446,161 +573,11 @@ void change_time(char* dest_name) {
     wait(&status);
 }
 
-// --------------------------------------------------------
-void init_dest_dir(const char* dst_name) {
-    mkdir(dst_name, 0777);
+//----------------------------------------------------------------------
+void init_dest_dir(const char* dst) {
+    mkdir(dst, 0666);
     if (errno != EEXIST) {
        LOG("Creating new backup directory: %s\n", strerror(errno));
     }
 }
 
-// --------------------------------------------------------
-void traverse(char* src_name, char* dest_name, int indent) {
-
-    char dest_path[MAX_PATH_SIZE];
-    strcpy(dest_path, dest_name);
-
-    struct dirent* entry = NULL;
-
-
-    DIR* dir = opendir(src_name);
-    if (dir == NULL) {
-        LOG("Failed opening src directory, %s\n", strerror(errno));   
-        exit(-1);
-    }
-
-    while ((entry = readdir(dir)) != NULL) {
-        assert(entry);
-
-        int df = dirfd(dir);
-        if (df < 0) {
-            LOG("Failed opening fd of  src directory, %s\n", strerror(errno));   
-            exit(-1);
-        }
-
-        time_t rawtime;
-        struct tm* timeinfo;
-
-        time (&rawtime);
-        timeinfo = localtime(&rawtime);
-
-        if (entry->d_type == DT_REG) {
-
-            struct stat reg_info;
-            fstatat(df, entry->d_name, &reg_info, 0);
-
-
-            LOG("%*s File %s, Time since last modification: %ld sec, log time: %s\n", indent, \
-                    "", entry->d_name, \
-                    reg_info.st_mtime, \
-                    asctime (timeinfo));                 \
-
-            // if file source_name not found in dest_name directory, copy it
-            int exists = lookup(entry->d_name, dest_name);
-            if (!exists) {
-
-                char source_name[MAX_PATH_SIZE];
-                snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
-                LOG("NOT BACKUPED File %s, copying to %s\n", source_name, dest_name);
-                copy(source_name, dest_name,  DT_REG);
-
-            }
-
-            // if it has been found, compare last modified times, if they differ copy again
-            struct stat dest_info;
-
-            DIR* dst_dir = opendir(dest_name);
-            if (dst_dir < 0) {
-                LOG("Failed opening dst directory, %s\n", strerror(errno));   
-                exit(-1);
-            }
-
-            int dstf = dirfd(dst_dir);
-            if (dstf < 0) {
-                LOG("Failed opening fd of dst directory, %s\n", strerror(errno));   
-                exit(-1);
-            }
-            
-            fstatat(dstf, entry->d_name, &dest_info, 0);
-            LOG("%*s File(in destination directory) %s, Time since last modification: %ld sec (compared with %ld in source)\n", indent, \
-                    "", entry->d_name, \
-                    dest_info.st_mtime, reg_info.st_mtime);
-            closedir(dst_dir);
-
-            if (dest_info.st_mtime < reg_info.st_mtime) {
-                char source_name[MAX_PATH_SIZE];
-                snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
-                //LOG("Updating file : %s to %s\n", source_name, dest_name);
-                LOG("UPDATING file %s\n", source_name);
-                copy(source_name, dest_name,  DT_REG);
-                change_time(dest_name);
-            }
-                                    
-        } else if (entry->d_type == DT_DIR) {
-
-            char src_path[MAX_PATH_SIZE];
-            struct stat dir_info;
-            fstatat(df, entry->d_name, &dir_info, 0);
-
-            // skip . and .. directories
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-                continue;
-            }
-
-            LOG("%*s Dir %s, Time since last modification: %ld\n", indent, \
-                    "", entry->d_name, dir_info.st_mtime);
-
-            // searching for directory d_name in dest_name, if does not exist - copy recursively
-            int exists = lookup(entry->d_name, dest_name);
-
-            if (!exists) {
-                char source_name[MAX_PATH_SIZE];
-                snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
-                LOG("NOT BACKUPED Dir %s, copying to %s\n", source_name, dest_name);
-                copy(source_name, dest_name, DT_DIR);
-                // do not search in directory that has just been copied
-                continue;
-            }
-
-            //update path for seraching in subdirectory
-            snprintf(src_path, sizeof(src_path), "%s/%s", src_name, entry->d_name);
-            snprintf(dest_path, sizeof(dest_path), "%s/%s", dest_name, entry->d_name);
-
-            traverse(src_path, dest_path, indent + 5);
-        } else if (entry->d_type == DT_LNK) {
-
-            // get symlink info
-            struct stat link_info;
-            fstatat(df, entry->d_name, &link_info, 0);
-
-            // skip . and .. directories may be unnecesary
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-                continue;
-            }
-
-            LOG("%*s Symlink %s, Time since last modification: %ld\n", indent, \
-                    "", entry->d_name, link_info.st_mtime);
-
-            // searching for symlink d_name in dest_name, copy only link by default
-            //int exists = lookup(entry->d_name, dest_name);
-
-            char source_name[MAX_PATH_SIZE];
-            snprintf(source_name, sizeof(source_name), "%s/%s", src_name, entry->d_name);
-
-            // if links are not set for deref, only copy symlink
-            if (lnk_type == LINKS_NO_DEREF) {
-                LOG("COPYING Symlink %s, to %s\n", source_name, dest_name);
-                copy(source_name, dest_name, LINKS_NO_DEREF);
-            } else {
-                LOG("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", source_name, dest_name);
-                copy(source_name, dest_name, LINKS_DEREF);
-            }
-            // do not search in directory that has just been copied
-            continue;
-        } else {
-            fprintf(stderr, "Not regular file or directory\n");
-        }
-    }
-
-    closedir(dir);
-}

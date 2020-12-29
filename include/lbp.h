@@ -37,7 +37,7 @@ void init_daemon(char* src, char* dst, int links_behaviour);
    with the corresponding entries in dest_name directory, copies entries which do not
    exist in dest_name, indent is a number describing the indent size used to print
    directories status in log file */
-void traverse(char* src_name, char* dest_name, int indent);
+void traverse(char* src, char* dst, int indent);
 
 /* finds a file or dir named name in directory dir, returns 1 on success and 0 if file
    does not exists */
@@ -48,17 +48,20 @@ int lookup(const char* name, const char* dir);
 void copy(char* src, char* dst, int type);
 
 /* create a backup directory dst_name or open if one already exists */
-void init_dest_dir(const char* dst_name);
+void init_dest_dir(const char* dst);
 
-/* change modification time of a file/directory dest_name */
-void change_time(char* dest_name);
+/* change modification time of a file/directory dst */
+void change_time(char* dst);
 
 /* kill daemon */
 void daemon_stop();
 
-/* print daemon logs in log_path directory (if used with rc interface program, then
+/* print daemon logs in log_path directory (if used with ./lbp-ui interface program, then
    by default log_path is current working directory) */
 void daemon_print(char* log_path);
+
+/* run the backup program */
+void run_backup(char* src, char* dst);
 
 
 extern int lnk_type; /* This is declare in lbp.c */

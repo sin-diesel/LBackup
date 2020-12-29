@@ -3,7 +3,10 @@
     launches a daemon which monitors specified directory
     for any modifications and, should any occur or in 
     case no modifications at all have ever been introduced to
-    the directory, makes a copy of a directory to another backup directory */
+    the directory, makes a copy of a directory to another backup directory
+
+    IMPORTANT NOTE: the program creates log file in /var/log, therefore it ought
+    to be launched under sudo. */
 
 
 /* These have been defined to use several systems calls not available otherwise */
@@ -56,8 +59,11 @@ int main(int argc, char** argv) {
     }
 
     printf("Starting program...\n");
+
     init_daemon(src_path, dst_path, lnk_type);
 
-    return 0;
+    run_backup(src_path, dst_path);
 
+    return 0;
+    
 }
