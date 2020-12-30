@@ -190,6 +190,7 @@ void run_backup(char* src, char* dst) {
     while(1) {
 
         int events = 0;
+        time_t log_time;
         events = poll(&pfd, 1, sleep_time * 1000); /* multiplied by 1000 for milliseconds */
 
         if (events > 0 && pfd.revents & POLLIN) { /* if there is data in fifo */
@@ -215,7 +216,7 @@ void run_backup(char* src, char* dst) {
                 }
                 LOG("Bytes read: %d\n", n_read);
                 LOG("Path transmitted: %s\n", data);
-                
+
                 close(fd_fifo);
 
                 // reopen
@@ -259,7 +260,10 @@ void run_backup(char* src, char* dst) {
                 }   
             }
         }
-        LOG("\n\n\nDaemon running %d second\n\n\n", run_time);
+        time(&log_time);
+
+        LOG("\n\n\nLog time: %s\n", ctime(&log_time));
+        LOG("Daemon running %d second\n\n\n", run_time);
 
         int initial_indent = 1; /* starting with 1 indent */
         init_dest_dir(dst);
