@@ -18,6 +18,13 @@
 #include <sys/time.h>
 #include <poll.h>
 
+/* These are commands that can be sent to daemon in order to control its behaviour */
+enum commands_t {
+    STOP = 0,
+    PRINT,
+    SET,
+};
+
 
 /* Checks if the input is correct, returns 0 on succes, -1 if errors have been detected */
 int check_args(int argc, char** argv);
