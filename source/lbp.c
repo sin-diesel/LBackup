@@ -275,7 +275,6 @@ void run_backup(char* src, char* dst) {
         LOG("Daemon running %d second\n\n\n", run_time);
 
         int initial_indent = 1; /* starting with 1 indent */
-        init_dest_dir(dst);
 
         traverse(src, dst, initial_indent);
 
@@ -317,9 +316,6 @@ void traverse(char* src, char* dst, int indent) {
             LOG("Failed opening fd of  src directory, %s\n", strerror(errno));   
             exit(-1);
         }
-
-        // time (&rawtime); /* for printing time in log */
-        // timeinfo = localtime(&rawtime);
 
         if (entry->d_type == DT_REG) { /* check if the file type is a regular file */
 
@@ -561,6 +557,94 @@ void copy(char* src, char* dst, int type) {
 }
 
 //----------------------------------------------------------------------
+void copy_rw(char* src, char* dst, int type) {
+
+    DIR* dir = NULL;
+    struct dirent* entry;
+
+    char dst_path[MAX_PATH_SIZE];
+    char src_path[MAX_PATH_SIZE];
+
+    int fd_src = 0;
+    int fd_dst = 0;
+
+    int n_read = 0;
+    int n_write = 0;
+
+    char buf[BUFSIZ];
+    int src_size = 0;
+
+    if (type == DT_DIR) {
+        /* create a directory */
+        //snprintf(dst_path, sizeof(dst_path), "%s/%s", , entry->d_name);
+        mkdir(dst, 0666);
+        dir = opendir(src);
+        if (dir == NULL) {
+            LOG("Error opening dir: %s\n", strerror(errno));
+        }
+
+        entry = readdir(dir);
+        if (entry == NULL) {
+            LOG("Error reading dir: %s\n", strerror(errno));
+        }
+
+        /* Update src_buf and dst_buf so they contain new path */
+        snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+        snprintf(dst_path, sizeof(dst_path), "%s/%s", src, entry->d_name);
+
+        if (entry->d_type == DT_DIR) {
+            copy_rw(src_path, dst_path, DT_DIR);
+        } else if (entry->d_type == DT_REG) {
+            fd_src = open(src_path, O_RDONLY);
+            if (fd_src < 0) {
+                LOG("Error opening file for reading: %s\n", strerror(errno));
+            }
+
+            /* get src file size */
+            
+
+            n_read = read(fd_src, buf, sizeof(src_size));
+        }
+        closedir(dir);
+        /* If the entry is another directory, do a recursive step */
+
+    }
+
+    char cmd[] = "cp";
+    char* argv[6];
+
+    if (type == DT_DIR || type == LINKS_NO_DEREF) {
+        argv[0] = cmd;
+        argv[1] = "-r";
+        argv[2] = src;
+        argv[3] = dst;
+        argv[4] = NULL;
+    } else if (type == DT_REG) {
+        argv[0] = cmd;
+        argv[1] = src;
+        argv[2] = dst;
+        argv[3] = NULL;
+    } else if (type == LINKS_DEREF) {
+        argv[0] = cmd;
+        argv[1] = "-r";
+        argv[2] = "-L";
+        argv[3] = src;
+        argv[4] = dst;
+        argv[5] = NULL;
+    } else {
+        fprintf(stderr, "No copy type recognized\n");
+    }
+
+    int status = 0;
+    int pid = fork();
+    if (pid == 0) {
+        execvp(cmd, argv);
+        ERROR(errno);
+    }
+    wait(&status);
+}
+
+//----------------------------------------------------------------------
 void change_time(char* dst) {
 
     char* argv[3];
@@ -581,6 +665,8 @@ void change_time(char* dst) {
 
     wait(&status);
 }
+
+
 
 //----------------------------------------------------------------------
 void init_dest_dir(const char* dst) {

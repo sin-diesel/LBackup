@@ -12,10 +12,11 @@
 /* These have been defined to use several systems calls not available otherwise */
 
 /* TODO
-1) add each log printing time
-2) refactor program interface
-3) refactor log printing in general for easier understanding 
-4) add readme */
+1) add each log printing time DONE
+2) refactor program interface DONE
+3) refactor log printing in general for easier understanding DONE 
+4) add readme DONE
+5) add read/write instead of cp command */
 
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
@@ -63,6 +64,8 @@ int main(int argc, char** argv) {
         ERROR_CLR("Source directory does not exist.\n");
         exit(EXIT_FAILURE);
     }
+
+    init_dest_dir(dst_path);
 
     printf("Starting program...\n");
 
