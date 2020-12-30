@@ -2,7 +2,7 @@
 
 
 /* This is defined for some sys calls */
-#define _XOPEN_SOURCE  600
+#define _XOPEN_SOURCE 600
 #define _GNU_SOURCE
 
 #include "lbp.h"
@@ -23,7 +23,7 @@
                             printf("%s\n", #error);                         \
                         while (0);                                          \
 
-
+static const char myfifo[] = "/tmp/lbp_fifo";
 /* Logger macros */
 FILE* log_file;
 int lnk_type = 0; /* this specifies whether to dereference links or not to */
@@ -164,8 +164,8 @@ void run_backup(char* src, char* dst) {
 
     const int sleep_time = 10; // sleeping time in seconds
     int run_time = 0;
-    char* myfifo = "/tmp/lbp_fifo";
     struct pollfd pfd;
+    int check = 0;
 
     char new_src[BUFSIZ];
     char new_dst[BUFSIZ];
@@ -191,6 +191,7 @@ void run_backup(char* src, char* dst) {
     while(1) {
 
         int events = 0;
+        time_t log_time;
         events = poll(&pfd, 1, sleep_time * 1000); /* multiplied by 1000 for milliseconds */
 
         if (events > 0 && pfd.revents & POLLIN) { /* if there is data in fifo */
@@ -203,10 +204,10 @@ void run_backup(char* src, char* dst) {
             LOG("Command read from pipe: %d\n", *((int*) data));
 
             /* if command is 0, stop daemon */
-            if (*((int*) data) == 0) {
+            if (*((int*) data) == STOP) {
                 close(fd_fifo);
                 daemon_stop();
-            } else if (*((int*) data) == 1) {
+            } else if (*((int*) data) == PRINT) {
 
                 /* if command is 1, print daemon logs and stop daemon
                  also read log_path from fifo to data */
@@ -216,21 +217,21 @@ void run_backup(char* src, char* dst) {
                 }
                 LOG("Bytes read: %d\n", n_read);
                 LOG("Path transmitted: %s\n", data);
+
                 close(fd_fifo);
 
                 // reopen
-                int fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
+                fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
                 if (fd_fifo < 0) {
                     LOG("Error opening FIFO: %s\n", strerror(errno));
                     exit(EXIT_FAILURE);
                 }
-                
                 daemon_print(data);
 
                 pfd.fd = fd_fifo;
                 pfd.events = POLLIN;
                 pfd.revents = 0;
-            } else if (*((int*) data) == 2) {
+            } else if (*((int*) data) == SET) {
                 /* if command is 2, set another file for backing up and another directory */
 
                 /* read new src path */
@@ -250,8 +251,16 @@ void run_backup(char* src, char* dst) {
                 LOG("New dst backup path transmitted: %s\n", new_dst);
                 close(fd_fifo);
 
-                src = new_src;
-                dst = new_dst;
+                /* Check if directory lies within the source directory */
+                check = check_dest_dir(new_src, new_dst);
+                if (check == 1) {
+                    LOG("Error: specified backup directory %s lies in source directory %s.\n",new_dst, new_src);
+                } else {
+                    /* Okay to switch directories, otherwise continue operating on previously
+                    specified directories */
+                    src = new_src;
+                    dst = new_dst;
+                }
 
                 fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
                 if (fd_fifo < 0) {
@@ -260,15 +269,13 @@ void run_backup(char* src, char* dst) {
                 }   
             }
         }
-        LOG("\n\n\nDaemon running %d second\n\n\n", run_time);
+        time(&log_time);
+
+        LOG("\n\n\nLog time: %s\n", ctime(&log_time));
+        LOG("Daemon running %d second\n\n\n", run_time);
 
         int initial_indent = 1; /* starting with 1 indent */
         init_dest_dir(dst);
-
-        int check = check_dest_dir(src, dst);
-        if (check == 1) {
-            exit(EXIT_FAILURE);
-        }
 
         traverse(src, dst, initial_indent);
 
@@ -432,15 +439,16 @@ void daemon_stop() {
 
 
 //----------------------------------------------------------------------
-void daemon_print(char* log_path) {
+void daemon_print(char* new_log_path) {
 
     char data[BUFSIZ];
     data[BUFSIZ - 1] = '\0';
     DIR* log_dir = NULL;
+    LOG("Copying all data from /var/log to created log%s\n", log_path);
 
     /* open daemon logs for reading */
     /* open directory where logs should be printed to */
-    log_dir = opendir(log_path);
+    log_dir = opendir(new_log_path);
     if (log_dir == NULL) {
         LOG("Error opening log dir: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
@@ -453,13 +461,15 @@ void daemon_print(char* log_path) {
         exit(EXIT_FAILURE);
     }
 
-    /* create user log file at log_path directory, or open if one already exists */
-    int output = openat(df, "lbackup.log", O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    /* create user log file at new_log_path directory, or open if one already exists */
+    int output = openat(df, "lbp.log", O_WRONLY | O_CREAT | O_TRUNC, 0666);
     if (output < 0) {
         LOG("Error creating log: %s\n", strerror(errno));
-        output = openat(df, "lbackup.log", O_WRONLY);
+        exit(EXIT_FAILURE);
+        output = openat(df, "lbp.log", O_WRONLY);
         if (output < 0) {
             LOG("Error opening log: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -483,9 +493,8 @@ void daemon_print(char* log_path) {
         }
     }
 
-    LOG("PRINTING LOGS, logs are in %s\n", log_path);
+    LOG("PRINTING LOGS, logs are in %s\n", new_log_path);
 
-    
     close(log);
     close(output);
 }
