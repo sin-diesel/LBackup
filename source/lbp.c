@@ -165,6 +165,7 @@ void run_backup(char* src, char* dst) {
     const int sleep_time = 10; // sleeping time in seconds
     int run_time = 0;
     struct pollfd pfd;
+    int check = 0;
 
     char new_src[BUFSIZ];
     char new_dst[BUFSIZ];
@@ -250,8 +251,16 @@ void run_backup(char* src, char* dst) {
                 LOG("New dst backup path transmitted: %s\n", new_dst);
                 close(fd_fifo);
 
-                src = new_src;
-                dst = new_dst;
+                /* Check if directory lies within the source directory */
+                check = check_dest_dir(new_src, new_dst);
+                if (check == 1) {
+                    LOG("Error: specified backup directory %s lies in source directory %s.\n",new_dst, new_src);
+                } else {
+                    /* Okay to switch directories, otherwise continue operating on previously
+                    specified directories */
+                    src = new_src;
+                    dst = new_dst;
+                }
 
                 fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
                 if (fd_fifo < 0) {
@@ -267,11 +276,6 @@ void run_backup(char* src, char* dst) {
 
         int initial_indent = 1; /* starting with 1 indent */
         init_dest_dir(dst);
-
-        int check = check_dest_dir(src, dst);
-        if (check == 1) {
-            exit(EXIT_FAILURE);
-        }
 
         traverse(src, dst, initial_indent);
 
