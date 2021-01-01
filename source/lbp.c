@@ -336,6 +336,8 @@ void traverse(char* src, char* dst, int indent) {
                 #ifndef COPY_RW
                 copy(src_path, dst_path,  DT_REG);
                 #else 
+                /* Copy regular file, where dst is the name of a directory where 
+                we are copying to */
                 res = copy_reg(src_path, dst, entry->d_name);
                 if (res < 0) {
                     exit(EXIT_FAILURE);
@@ -370,6 +372,7 @@ void traverse(char* src, char* dst, int indent) {
                 #ifndef COPY_RW
                 copy(source_name, dst,  DT_REG);
                 #else
+                /* Copying again */
                 res = copy_reg(source_name, dst, entry->d_name);
                 if (res < 0) {
                     exit(EXIT_FAILURE);
@@ -399,8 +402,14 @@ void traverse(char* src, char* dst, int indent) {
                 #ifndef COPY_RW
                 copy(src_path, dst_path, DT_DIR);
                 #else
+                /* If we see a directory, update dst_path and create a new directory,
+                then traverse it */
+
                 snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
-                mkdir(dst_path, 0666);
+                res = mkdir(dst_path, 0666);
+                if (res < 0) {
+                    LOG("Error creating directory: %s\n", strerror(errno));
+                }
                 #endif
                 /* do not search in directory that has just been copied */
                 continue;
@@ -408,11 +417,15 @@ void traverse(char* src, char* dst, int indent) {
 
             /* update path for seraching in subdirectory */
             snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+            /* I HAVE NO IDEA WHY THIS IS WORKING WITHOUT IFNDEF WHEN IT IS NOT CORRECT */
+            //#ifndef COPY_RW
             snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
+            //#endif
 
             /* recursive copy */
             traverse(src_path, dst_path, indent + INDENT_SIZE);
 
+        /* Handle links with read/write */
         } else if (entry->d_type == DT_LNK) {
 
             /* get symlink info */
