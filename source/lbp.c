@@ -406,7 +406,7 @@ void traverse(char* src, char* dst, int indent) {
                 then traverse it */
 
                 snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
-                res = mkdir(dst_path, 0666);
+                res = mkdir(dst_path, 0777); // 0777 for execute permission
                 if (res < 0) {
                     LOG("Error creating directory: %s\n", strerror(errno));
                 }
@@ -743,7 +743,7 @@ void change_time(char* dst) {
 
 //----------------------------------------------------------------------
 void init_dest_dir(const char* dst) {
-    mkdir(dst, 0666);
+    mkdir(dst, 0777);
     if (errno != EEXIST) {
        LOG("Creating new backup directory: %s\n", strerror(errno));
     }
