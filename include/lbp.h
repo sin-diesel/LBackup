@@ -70,6 +70,9 @@ void daemon_print(char* log_path);
 /* run the backup program */
 void run_backup(char* src, char* dst);
 
+/* copy using read/write instead of cp command */
+void copy_rw(char* src, char* dst, char* name, int type);
+
 
 extern int lnk_type; /* This is declare in lbp.c */
     

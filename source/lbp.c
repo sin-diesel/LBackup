@@ -14,6 +14,8 @@
 #define LINKS_NO_DEREF 0
 #define LINKS_DEREF 1
 
+#define COPY_RW
+
 /* Error macros */
 #define ERROR(error) fprintf(stderr, "Error in line %d, func %s: %s\n", __LINE__, __func__, strerror(error))
 #define ERROR_CLR(error)  do {                                          \
@@ -294,6 +296,7 @@ void traverse(char* src, char* dst, int indent) {
     DIR* dir = NULL;
     DIR* dst_dir = NULL;
     int df = 0;
+    int res = 0;
     // time_t rawtime;
     // struct tm* timeinfo = NULL;
     struct stat src_info;
@@ -330,8 +333,14 @@ void traverse(char* src, char* dst, int indent) {
             if (!exists) {
                 snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
                 LOG("NOT BACKUPED File %s, copying to %s\n", src, dst);
+                #ifndef COPY_RW
                 copy(src_path, dst_path,  DT_REG);
-
+                #else 
+                res = copy_reg(src_path, dst, entry->d_name);
+                if (res < 0) {
+                    exit(EXIT_FAILURE);
+                }
+                #endif
             }
 
             /* if it has been found, compare last modified times, if they differ copy again */
@@ -358,7 +367,14 @@ void traverse(char* src, char* dst, int indent) {
                 char source_name[MAX_PATH_SIZE];
                 snprintf(source_name, sizeof(source_name), "%s/%s", src, entry->d_name);
                 LOG("UPDATING file %s\n", source_name);
+                #ifndef COPY_RW
                 copy(source_name, dst,  DT_REG);
+                #else
+                res = copy_reg(source_name, dst, entry->d_name);
+                if (res < 0) {
+                    exit(EXIT_FAILURE);
+                }
+                #endif
                 change_time(dst);
             }
                                     
@@ -380,7 +396,12 @@ void traverse(char* src, char* dst, int indent) {
             if (!exists) {
                 snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
                 LOG("NOT BACKUPED Dir %s, copying to %s\n", src, dst);
+                #ifndef COPY_RW
                 copy(src_path, dst_path, DT_DIR);
+                #else
+                snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
+                mkdir(dst_path, 0666);
+                #endif
                 /* do not search in directory that has just been copied */
                 continue;
             }
@@ -414,7 +435,8 @@ void traverse(char* src, char* dst, int indent) {
                 LOG("COPYING Symlink %s, to %s\n", src_path, dst_path);
                 copy(src_path, dst_path, LINKS_NO_DEREF);
             } else {
-                LOG("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", src_path, dst_path);
+                LOG("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", src_path, \
+                 dst_path);   
                 copy(src_path, dst_path, LINKS_DEREF);
             }
             /* do not search in directory that has just been copied */
@@ -556,17 +578,20 @@ void copy(char* src, char* dst, int type) {
     wait(&status);
 }
 
-//----------------------------------------------------------------------
-void copy_rw(char* src, char* dst, int type) {
+int copy_reg(char* src, char* dst, char* name) {
 
-    DIR* dir = NULL;
-    struct dirent* entry;
+    struct stat info;
 
     char dst_path[MAX_PATH_SIZE];
     char src_path[MAX_PATH_SIZE];
+    DIR* dir = NULL;
+    char* file_name = NULL;
 
     int fd_src = 0;
     int fd_dst = 0;
+    int drfd = 0;
+
+    int res = 0;
 
     int n_read = 0;
     int n_write = 0;
@@ -574,13 +599,74 @@ void copy_rw(char* src, char* dst, int type) {
     char buf[BUFSIZ];
     int src_size = 0;
 
+    fd_src = open(src, O_RDONLY);
+    if (fd_src < 0) {
+        LOG("Error opening source file %s for reading: %s\n", src, strerror(errno));
+        return -1;
+    }
+
+    /* get src file size */
+    res = fstat(fd_src, &info);
+    if (res < 0) {
+        LOG("Error fstatting source file %s: %s\n", src, strerror(errno));
+    }
+    src_size = info.st_size;
+
+    /* read data from file */
+    n_read = read(fd_src, buf, src_size);
+
+    if (n_read != src_size) {
+        LOG("Error, read: %d, expected: %d, reading from source file %s: %s\n", n_read, src_size, src, strerror(errno));
+        return -1;
+    }
+
+    /* copy file via creating new file in dst path, first open a directory dst */
+    dir = opendir(dst);
+    if (dir == NULL) {
+        LOG("Error opening dir when copying reg %s: %s\n", dst, strerror(errno));
+    }
+    drfd = dirfd(dir);
+    if (drfd < 0) {
+        LOG("Error getting dirfd: %s\n", strerror(errno));
+    }
+
+    fd_dst = openat(drfd, name, O_WRONLY | O_CREAT, 0666);
+    if (fd_dst < 0) {
+        LOG("Error opening dst file %s for writing: %s\n", dst, strerror(errno));
+        return -1;
+    }
+
+    n_write = write(fd_dst, buf, n_read);
+    if (n_write != n_read) {
+        LOG("Error writing to dst file %s: %s\n", dst, strerror(errno));
+        return -1;
+    }
+
+    close(fd_dst);
+    close(fd_src);
+    return 0;
+}
+
+/* fix type */
+//----------------------------------------------------------------------
+void copy_rw(char* src, char* dst, char* name, int type) {
+
+    DIR* dir = NULL;
+    struct dirent* entry;
+    int res = 0;
+
+    char dst_path[MAX_PATH_SIZE];
+    char src_path[MAX_PATH_SIZE];
+
+    snprintf(src_path, sizeof(src_path), "%s", src);
+    snprintf(dst_path, sizeof(dst_path), "%s", dst);
+
     if (type == DT_DIR) {
         /* create a directory */
-        //snprintf(dst_path, sizeof(dst_path), "%s/%s", , entry->d_name);
-        mkdir(dst, 0666);
+        //mkdir(dst_path, 0666);
         dir = opendir(src);
         if (dir == NULL) {
-            LOG("Error opening dir: %s\n", strerror(errno));
+            LOG("Error opening dir %s: %s\n", src, strerror(errno));
         }
 
         entry = readdir(dir);
@@ -590,58 +676,32 @@ void copy_rw(char* src, char* dst, int type) {
 
         /* Update src_buf and dst_buf so they contain new path */
         snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
-        snprintf(dst_path, sizeof(dst_path), "%s/%s", src, entry->d_name);
 
-        if (entry->d_type == DT_DIR) {
-            copy_rw(src_path, dst_path, DT_DIR);
-        } else if (entry->d_type == DT_REG) {
-            fd_src = open(src_path, O_RDONLY);
-            if (fd_src < 0) {
-                LOG("Error opening file for reading: %s\n", strerror(errno));
+        LOG("Src and dst paths: %s, %s\n", src_path, dst_path);
+        if (entry->d_type == DT_REG) {
+            copy_rw(src_path, dst_path, name, DT_REG);
+        } else if (entry->d_type == DT_DIR) {
+            snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
+            res = mkdir(dst_path, 0666);
+            if (res < 0) {
+                LOG("Error creating directory in dest: %s\n", strerror(errno));
             }
-
-            /* get src file size */
-            
-
-            n_read = read(fd_src, buf, sizeof(src_size));
+            copy_rw(src_path, dst_path, name, DT_DIR);
         }
-        closedir(dir);
+
+        //f (entry->d_type == DT_DIR) {
+      //  } else if (entry->d_type == DT_REG) {
+       // }
+        //closedir(dir);
         /* If the entry is another directory, do a recursive step */
 
-    }
-
-    char cmd[] = "cp";
-    char* argv[6];
-
-    if (type == DT_DIR || type == LINKS_NO_DEREF) {
-        argv[0] = cmd;
-        argv[1] = "-r";
-        argv[2] = src;
-        argv[3] = dst;
-        argv[4] = NULL;
     } else if (type == DT_REG) {
-        argv[0] = cmd;
-        argv[1] = src;
-        argv[2] = dst;
-        argv[3] = NULL;
-    } else if (type == LINKS_DEREF) {
-        argv[0] = cmd;
-        argv[1] = "-r";
-        argv[2] = "-L";
-        argv[3] = src;
-        argv[4] = dst;
-        argv[5] = NULL;
-    } else {
-        fprintf(stderr, "No copy type recognized\n");
+        res = copy_reg(src, dst, name);
+        if (res < 0) {
+            exit(EXIT_FAILURE);
+        }
     }
 
-    int status = 0;
-    int pid = fork();
-    if (pid == 0) {
-        execvp(cmd, argv);
-        ERROR(errno);
-    }
-    wait(&status);
 }
 
 //----------------------------------------------------------------------
