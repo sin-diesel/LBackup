@@ -291,12 +291,14 @@ void traverse(char* src, char* dst, int indent) {
 
     char dst_path[MAX_PATH_SIZE]; /* destination path buffer */
     char src_path[MAX_PATH_SIZE];
+    char link_path[MAX_PATH_SIZE];
 
     struct dirent* entry = NULL;
     DIR* dir = NULL;
     DIR* dst_dir = NULL;
     int df = 0;
     int res = 0;
+    int exists = 0;
     // time_t rawtime;
     // struct tm* timeinfo = NULL;
     struct stat src_info;
@@ -329,7 +331,7 @@ void traverse(char* src, char* dst, int indent) {
                     src_info.st_mtime);             
 
             /* if file d_name not found in dst directory, copy it */
-            int exists = lookup(entry->d_name, dst);
+            exists = lookup(entry->d_name, dst);
             if (!exists) {
                 snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
                 LOG("NOT BACKUPED File %s, copying to %s\n", src, dst);
@@ -394,7 +396,7 @@ void traverse(char* src, char* dst, int indent) {
                     "", entry->d_name, src_info.st_mtime);
 
             /* searching for directory d_name in dest_name, if does not exist - copy recursively */
-            int exists = lookup(entry->d_name, dst);
+            exists = lookup(entry->d_name, dst);
 
             if (!exists) {
                 snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
@@ -412,10 +414,12 @@ void traverse(char* src, char* dst, int indent) {
                 }
                 #endif
                 /* do not search in directory that has just been copied */
+                #ifndef COPY_RW
                 continue;
+                #endif
             }
 
-            /* update path for seraching in subdirectory */
+            /* update path for searching in subdirectory */
             snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
             /* I HAVE NO IDEA WHY THIS IS WORKING WITHOUT IFNDEF WHEN IT IS NOT CORRECT */
             //#ifndef COPY_RW
@@ -439,21 +443,52 @@ void traverse(char* src, char* dst, int indent) {
             LOG("%*s Symlink %s, Time since last modification: %ld\n", indent, \
                     "", entry->d_name, link_info.st_mtime);
 
-            /* searching for symlink d_name in dest_name, copy only link by default */
+            /* See if link has already been copied */
+            exists = lookup(entry->d_name, dst);
+            if (!exists) {
+                /* searching for symlink d_name in dest_name, copy only link by default */
 
-            snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+                snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+                /* if links are not set for deref, only copy symlink */
+                if (lnk_type == LINKS_NO_DEREF) {
+                    LOG("COPYING Symlink %s, to %s\n", src_path, dst_path);
+                    #ifndef COPY_RW
+                    copy(src_path, dst_path, LINKS_NO_DEREF);
+                    #else
+                    /* creating symlink in dst */
+                    res = readlink(src_path, link_path, MAX_PATH_SIZE);
+                    if (res < 0) {
+                        LOG("Error reading link: %s\n", strerror(errno));
+                        exit(EXIT_FAILURE);
+                    }
+                    /* Make null-terminated */
+                    link_path[res] = '\0';
 
-            /* if links are not set for deref, only copy symlink */
-            if (lnk_type == LINKS_NO_DEREF) {
-                LOG("COPYING Symlink %s, to %s\n", src_path, dst_path);
-                copy(src_path, dst_path, LINKS_NO_DEREF);
-            } else {
-                LOG("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", src_path, \
-                 dst_path);   
-                copy(src_path, dst_path, LINKS_DEREF);
+                    LOG("Link contents: %s\n", link_path);
+                    LOG("dst path: %s\n", dst_path);
+                    LOG("Entry name: %s\n", entry->d_name);
+
+                    //snprintf(dst_path, sizeof (dst_path), "%s/%s", dst, entry->d_name);
+
+                    /* Temporary buffer for creating symlink path */
+
+                    char temp[MAX_PATH_SIZE];
+                    snprintf(temp, sizeof(temp), "%s/%s", dst, entry->d_name);
+
+                    res = symlink(link_path, temp);
+                    if (res < 0) {
+                        LOG("Error creating symlink: %s\n", strerror(errno));
+                        exit(EXIT_FAILURE);
+                    }
+                    #endif
+                } else {
+                    LOG("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", src_path, \
+                    dst_path);   
+                    copy(src_path, dst_path, LINKS_DEREF);
+                }
+                /* do not search in directory that has just been copied */
+                continue;
             }
-            /* do not search in directory that has just been copied */
-            continue;
         } else {
             fprintf(stderr, "Not regular file or directory\n");
         }
@@ -660,7 +695,6 @@ int copy_reg(char* src, char* dst, char* name) {
     return 0;
 }
 
-/* fix type */
 //----------------------------------------------------------------------
 void copy_rw(char* src, char* dst, char* name, int type) {
 
