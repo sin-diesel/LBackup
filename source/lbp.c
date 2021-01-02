@@ -14,7 +14,7 @@
 #define LINKS_NO_DEREF 0
 #define LINKS_DEREF 1
 
-#define COPY_RW
+//#define COPY_RW
 
 /* Error macros */
 #define ERROR(error) fprintf(stderr, "Error in line %d, func %s: %s\n", __LINE__, __func__, strerror(error))
@@ -294,6 +294,7 @@ void traverse(char* src, char* dst, int indent) {
     char link_path[MAX_PATH_SIZE];
     char buf[MAX_PATH_SIZE];
 
+    /* Making all buffers null-terminated */
     buf[MAX_PATH_SIZE] = '\0';
     dst_path[MAX_PATH_SIZE - 1] = '\0';
     src_path[MAX_PATH_SIZE - 1] = '\0';
@@ -325,6 +326,7 @@ void traverse(char* src, char* dst, int indent) {
         name = basename(buf);
         LOG("Reg file while traversing: %s\n", name);
         copy_reg(src, dst, name);
+        /* return after copying reg file has been completed */
         return;
     } else if ((src_info.st_mode & S_IFMT) == S_IFDIR) {
         dir = opendir(src);
@@ -356,7 +358,7 @@ void traverse(char* src, char* dst, int indent) {
                 snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
                 LOG("NOT BACKUPED File %s, copying to %s\n", src_path, dst);
                 #ifndef COPY_RW
-                copy(src_path, dst_path,  DT_REG);
+                copy(src_path, dst,  DT_REG);
                 #else 
                 /* Copy regular file, where dst is the name of a directory where 
                 we are copying to */
@@ -400,7 +402,7 @@ void traverse(char* src, char* dst, int indent) {
                 if (res < 0) {
                     exit(EXIT_FAILURE);
                 }
-                 LOG("Successfull file copy: %s\n", src_path);
+                LOG("Successfull file copy: %s\n", src_path);
                 #endif
                 LOG("Changing time in dst: %s\n", dst);
                 /* Change time in the whole directory, not in a single file */
@@ -427,12 +429,11 @@ void traverse(char* src, char* dst, int indent) {
                 snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
                 LOG("NOT BACKUPED Dir %s, copying to %s\n", src_path, dst);
                 #ifndef COPY_RW
-                copy(src_path, dst_path, DT_DIR);
+                copy(src_path, dst, DT_DIR);
                 #else
                 /* If we see a directory, update dst_path and create a new directory,
                 then traverse it */
 
-                //snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
                 res = mkdir(dst_path, 0777); // 0777 for execute permission
                 if (res < 0) {
                     LOG("Error creating directory: %s\n", strerror(errno));
@@ -440,17 +441,12 @@ void traverse(char* src, char* dst, int indent) {
                 traverse(src_path, dst_path, indent);
                 #endif
                 /* do not search in directory that has just been copied */
-                //#ifndef COPY_RW
                 continue;
-                //#endif
             }
 
             /* update path for searching in subdirectory */
             snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
-            /* I HAVE NO IDEA WHY THIS IS WORKING WITHOUT IFNDEF WHEN IT IS NOT CORRECT */
-            //#ifndef COPY_RW
             snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
-            //#endif
 
             /* recursive copy */
             traverse(src_path, dst_path, indent + INDENT_SIZE);
@@ -496,8 +492,6 @@ void traverse(char* src, char* dst, int indent) {
                     #else
                     /* creating symlink in dst */
 
-                    //snprintf(dst_path, sizeof (dst_path), "%s/%s", dst, entry->d_name);
-
                     /* Temporary buffer for creating symlink path */
 
                     char temp[MAX_PATH_SIZE];
@@ -515,8 +509,6 @@ void traverse(char* src, char* dst, int indent) {
                     #ifndef COPY_RW
                     copy(src_path, dst, LINKS_DEREF);
                     #else
-                    //snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
-
                     /* recursive copy */
                     traverse(link_path, dst, indent + INDENT_SIZE);
                     #endif
@@ -530,7 +522,7 @@ void traverse(char* src, char* dst, int indent) {
     }
 
     closedir(dir);
-}
+    }
 }
 
 //----------------------------------------------------------------------
@@ -657,6 +649,7 @@ void copy(char* src, char* dst, int type) {
     int pid = fork();
     if (pid == 0) {
         execvp(cmd, argv);
+        LOG("Error in execvp: %s\n", strerror(errno));
         ERROR(errno);
     }
     wait(&status);
@@ -664,6 +657,8 @@ void copy(char* src, char* dst, int type) {
 
 int copy_reg(char* src, char* dst, char* name) {
 
+    // LOG("Source reg: %s\n", src);
+    // LOG("Dest reg: %s\n", dst);
     struct stat info;
     DIR* dir = NULL;
 
@@ -684,20 +679,24 @@ int copy_reg(char* src, char* dst, char* name) {
         LOG("Error opening source file %s for reading: %s\n", src, strerror(errno));
         return -1;
     }
+    LOG("Src fd %d\n", fd_src);
 
     /* get src file size */
     res = fstat(fd_src, &info);
     if (res < 0) {
         LOG("Error fstatting source file %s: %s\n", src, strerror(errno));
+        return -1;
     }
     src_size = info.st_size;
+    LOG("Src size: %d\n", src_size);
 
     /* read data from file */
     n_read = read(fd_src, buf, src_size);
+    LOG("Read vs expected: %d, %d\n", n_read, src_size);
 
     if (n_read != src_size) {
         LOG("Error, read: %d, expected: %d, reading from source file %s: %s\n", n_read, src_size, src, strerror(errno));
-        return -1;
+        return -1;  
     }
 
     /* copy file via creating new file in dst path, first open a directory dst */
@@ -722,6 +721,7 @@ int copy_reg(char* src, char* dst, char* name) {
         return -1;
     }
 
+    close(drfd);
     close(fd_dst);
     close(fd_src);
     return 0;
