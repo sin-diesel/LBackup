@@ -292,13 +292,24 @@ void traverse(char* src, char* dst, int indent) {
     char dst_path[MAX_PATH_SIZE]; /* destination path buffer */
     char src_path[MAX_PATH_SIZE];
     char link_path[MAX_PATH_SIZE];
+    char buf[MAX_PATH_SIZE];
+    char* name = NULL;
+    buf[MAX_PATH_SIZE] = '\0';
+    dst_path[MAX_PATH_SIZE - 1] = '\0';
+    src_path[MAX_PATH_SIZE - 1] = '\0';
+    link_path[MAX_PATH_SIZE - 1] = '\0';
 
     struct dirent* entry = NULL;
     DIR* dir = NULL;
     DIR* dst_dir = NULL;
     int df = 0;
     int res = 0;
+    int dst_fd = 0;
+    int src_fd = 0;
     int exists = 0;
+    int src_size = 0;
+    int n_read = 0;
+    int n_write = 0;
     // time_t rawtime;
     // struct tm* timeinfo = NULL;
     struct stat src_info;
@@ -306,6 +317,41 @@ void traverse(char* src, char* dst, int indent) {
     struct stat link_info;
 
     strcpy(dst_path, dst); /* copying dst full name to buffer */
+
+    LOG("Checking entry: %s\n", src);
+    /* Handle the case where src is not a directory, but a file */
+    res = stat(src, &src_info);
+    if (res < 0) {
+        LOG("Error statting src file: %s\n", strerror(errno));
+    }
+    if ((src_info.st_mode & S_IFMT) == S_IFREG) {
+        memcpy(buf, src, MAX_PATH_SIZE);
+        name = basename(buf);
+        LOG("Reg file in traverse: %s\n", name);
+        copy_reg(src, dst, name);
+        return 0;
+    }
+
+    // if (src_info.st_mode == S_IFREG) {
+    //     src_fd = open(src, O_RDONLY);
+    //     if (src_fd < 0) {
+    //         LOG("Error opening src file: %s\n", strerror(errno));
+    //     }
+
+    //     src_size = src_info.st_size;
+
+    //     n_read = read(src_fd, &buf, src_size);
+    //     if (n_read != src_size) {
+    //         LOG("Error reading, read: %d, expected: %d\n", n_read, src_size);
+    //     }
+
+    //     dst_fd = open(dst, O_WRONLY | );
+    //     if (dst_fd < 0) {
+    //         LOG("Error opening dst file: %s\n", strerror(errno));
+    //     }
+    //     n_write = write()
+
+    // }
 
     dir = opendir(src);
     if (dir == NULL) {
@@ -449,24 +495,26 @@ void traverse(char* src, char* dst, int indent) {
                 /* searching for symlink d_name in dest_name, copy only link by default */
 
                 snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+
+                res = readlink(src_path, link_path, MAX_PATH_SIZE);
+                if (res < 0) {
+                    LOG("Error reading link: %s\n", strerror(errno));
+                    exit(EXIT_FAILURE);
+                }
+                /* Make null-terminated */
+                link_path[res] = '\0';
+
+                LOG("Link contents: %s\n", link_path);
+                LOG("dst path: %s\n", dst);
+                LOG("Entry name: %s\n", entry->d_name);
+                    
                 /* if links are not set for deref, only copy symlink */
                 if (lnk_type == LINKS_NO_DEREF) {
-                    LOG("COPYING Symlink %s, to %s\n", src_path, dst_path);
+                    LOG("COPYING Symlink %s, to %s\n", src_path, dst);
                     #ifndef COPY_RW
                     copy(src_path, dst_path, LINKS_NO_DEREF);
                     #else
                     /* creating symlink in dst */
-                    res = readlink(src_path, link_path, MAX_PATH_SIZE);
-                    if (res < 0) {
-                        LOG("Error reading link: %s\n", strerror(errno));
-                        exit(EXIT_FAILURE);
-                    }
-                    /* Make null-terminated */
-                    link_path[res] = '\0';
-
-                    LOG("Link contents: %s\n", link_path);
-                    LOG("dst path: %s\n", dst_path);
-                    LOG("Entry name: %s\n", entry->d_name);
 
                     //snprintf(dst_path, sizeof (dst_path), "%s/%s", dst, entry->d_name);
 
@@ -484,7 +532,14 @@ void traverse(char* src, char* dst, int indent) {
                 } else {
                     LOG("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", src_path, \
                     dst_path);   
+                    #ifndef COPY_RW
                     copy(src_path, dst_path, LINKS_DEREF);
+                    #else
+                    //snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
+
+                    /* recursive copy */
+                    traverse(link_path, dst, indent + INDENT_SIZE);
+                    #endif
                 }
                 /* do not search in directory that has just been copied */
                 continue;

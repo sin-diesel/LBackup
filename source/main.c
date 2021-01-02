@@ -16,7 +16,9 @@
 2) refactor program interface DONE
 3) refactor log printing in general for easier understanding DONE 
 4) add readme DONE
-5) add read/write instead of cp command */
+5) add read/write instead of cp command DONE
+6) symlinks with read/write 
+7) check null-termination */
 
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
