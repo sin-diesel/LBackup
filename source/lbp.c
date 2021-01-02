@@ -293,30 +293,25 @@ void traverse(char* src, char* dst, int indent) {
     char src_path[MAX_PATH_SIZE];
     char link_path[MAX_PATH_SIZE];
     char buf[MAX_PATH_SIZE];
-    char* name = NULL;
+
     buf[MAX_PATH_SIZE] = '\0';
     dst_path[MAX_PATH_SIZE - 1] = '\0';
     src_path[MAX_PATH_SIZE - 1] = '\0';
     link_path[MAX_PATH_SIZE - 1] = '\0';
+
+    char* name = NULL;
 
     struct dirent* entry = NULL;
     DIR* dir = NULL;
     DIR* dst_dir = NULL;
     int df = 0;
     int res = 0;
-    int dst_fd = 0;
-    int src_fd = 0;
     int exists = 0;
-    int src_size = 0;
-    int n_read = 0;
-    int n_write = 0;
-    // time_t rawtime;
-    // struct tm* timeinfo = NULL;
     struct stat src_info;
     struct stat dst_info;
     struct stat link_info;
 
-    strcpy(dst_path, dst); /* copying dst full name to buffer */
+    memcpy(dst_path, dst, MAX_PATH_SIZE); /* copying dst full name to buffer */
 
     LOG("Checking entry: %s\n", src);
     /* Handle the case where src is not a directory, but a file */
@@ -324,49 +319,28 @@ void traverse(char* src, char* dst, int indent) {
     if (res < 0) {
         LOG("Error statting src file: %s\n", strerror(errno));
     }
+
     if ((src_info.st_mode & S_IFMT) == S_IFREG) {
         memcpy(buf, src, MAX_PATH_SIZE);
         name = basename(buf);
-        LOG("Reg file in traverse: %s\n", name);
+        LOG("Reg file while traversing: %s\n", name);
         copy_reg(src, dst, name);
-        return 0;
-    }
-
-    // if (src_info.st_mode == S_IFREG) {
-    //     src_fd = open(src, O_RDONLY);
-    //     if (src_fd < 0) {
-    //         LOG("Error opening src file: %s\n", strerror(errno));
-    //     }
-
-    //     src_size = src_info.st_size;
-
-    //     n_read = read(src_fd, &buf, src_size);
-    //     if (n_read != src_size) {
-    //         LOG("Error reading, read: %d, expected: %d\n", n_read, src_size);
-    //     }
-
-    //     dst_fd = open(dst, O_WRONLY | );
-    //     if (dst_fd < 0) {
-    //         LOG("Error opening dst file: %s\n", strerror(errno));
-    //     }
-    //     n_write = write()
-
-    // }
-
-    dir = opendir(src);
-    if (dir == NULL) {
-        LOG("Failed opening src directory, %s\n", strerror(errno));   
-        exit(-1);
-    }
-
-    while ((entry = readdir(dir)) != NULL) {
-        assert(entry);
-
-        df = dirfd(dir);
-        if (df < 0) {
-            LOG("Failed opening fd of  src directory, %s\n", strerror(errno));   
+        return;
+    } else if ((src_info.st_mode & S_IFMT) == S_IFDIR) {
+        dir = opendir(src);
+        if (dir == NULL) {
+            LOG("Failed opening src directory, %s\n", strerror(errno));   
             exit(-1);
         }
+
+        while ((entry = readdir(dir)) != NULL) {
+            assert(entry);
+
+            df = dirfd(dir);
+            if (df < 0) {
+                LOG("Failed opening fd of src directory, %s\n", strerror(errno));   
+                exit(-1);
+            }
 
         if (entry->d_type == DT_REG) { /* check if the file type is a regular file */
 
@@ -380,7 +354,7 @@ void traverse(char* src, char* dst, int indent) {
             exists = lookup(entry->d_name, dst);
             if (!exists) {
                 snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
-                LOG("NOT BACKUPED File %s, copying to %s\n", src, dst);
+                LOG("NOT BACKUPED File %s, copying to %s\n", src_path, dst);
                 #ifndef COPY_RW
                 copy(src_path, dst_path,  DT_REG);
                 #else 
@@ -390,6 +364,7 @@ void traverse(char* src, char* dst, int indent) {
                 if (res < 0) {
                     exit(EXIT_FAILURE);
                 }
+                LOG("Successfull file copy: %s\n", src_path);
                 #endif
             }
 
@@ -414,18 +389,21 @@ void traverse(char* src, char* dst, int indent) {
             closedir(dst_dir);
 
             if (dst_info.st_mtime < src_info.st_mtime) {
-                char source_name[MAX_PATH_SIZE];
-                snprintf(source_name, sizeof(source_name), "%s/%s", src, entry->d_name);
-                LOG("UPDATING file %s\n", source_name);
+                snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
+                LOG("UPDATING file %s\n", src_path);
                 #ifndef COPY_RW
-                copy(source_name, dst,  DT_REG);
+                copy(src_path, dst, DT_REG);
                 #else
                 /* Copying again */
-                res = copy_reg(source_name, dst, entry->d_name);
+                res = copy_reg(src_path, dst, entry->d_name);
+                LOG("Successfull file copy: %s\n", src_path);
                 if (res < 0) {
                     exit(EXIT_FAILURE);
                 }
+                 LOG("Successfull file copy: %s\n", src_path);
                 #endif
+                LOG("Changing time in dst: %s\n", dst);
+                /* Change time in the whole directory, not in a single file */
                 change_time(dst);
             }
                                     
@@ -446,23 +424,25 @@ void traverse(char* src, char* dst, int indent) {
 
             if (!exists) {
                 snprintf(src_path, sizeof(src_path), "%s/%s", src, entry->d_name);
-                LOG("NOT BACKUPED Dir %s, copying to %s\n", src, dst);
+                snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
+                LOG("NOT BACKUPED Dir %s, copying to %s\n", src_path, dst);
                 #ifndef COPY_RW
                 copy(src_path, dst_path, DT_DIR);
                 #else
                 /* If we see a directory, update dst_path and create a new directory,
                 then traverse it */
 
-                snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
+                //snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
                 res = mkdir(dst_path, 0777); // 0777 for execute permission
                 if (res < 0) {
                     LOG("Error creating directory: %s\n", strerror(errno));
                 }
+                traverse(src_path, dst_path, indent);
                 #endif
                 /* do not search in directory that has just been copied */
-                #ifndef COPY_RW
+                //#ifndef COPY_RW
                 continue;
-                #endif
+                //#endif
             }
 
             /* update path for searching in subdirectory */
@@ -512,7 +492,7 @@ void traverse(char* src, char* dst, int indent) {
                 if (lnk_type == LINKS_NO_DEREF) {
                     LOG("COPYING Symlink %s, to %s\n", src_path, dst);
                     #ifndef COPY_RW
-                    copy(src_path, dst_path, LINKS_NO_DEREF);
+                    copy(src_path, dst, LINKS_NO_DEREF);
                     #else
                     /* creating symlink in dst */
 
@@ -531,9 +511,9 @@ void traverse(char* src, char* dst, int indent) {
                     #endif
                 } else {
                     LOG("COPYING ALL CONTENTS OF SYMLINK %s, to %s\n", src_path, \
-                    dst_path);   
+                    dst);   
                     #ifndef COPY_RW
-                    copy(src_path, dst_path, LINKS_DEREF);
+                    copy(src_path, dst, LINKS_DEREF);
                     #else
                     //snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
 
@@ -550,6 +530,7 @@ void traverse(char* src, char* dst, int indent) {
     }
 
     closedir(dir);
+}
 }
 
 //----------------------------------------------------------------------
@@ -684,11 +665,7 @@ void copy(char* src, char* dst, int type) {
 int copy_reg(char* src, char* dst, char* name) {
 
     struct stat info;
-
-    char dst_path[MAX_PATH_SIZE];
-    char src_path[MAX_PATH_SIZE];
     DIR* dir = NULL;
-    char* file_name = NULL;
 
     int fd_src = 0;
     int fd_dst = 0;
@@ -784,7 +761,7 @@ void copy_rw(char* src, char* dst, char* name, int type) {
             copy_rw(src_path, dst_path, name, DT_REG);
         } else if (entry->d_type == DT_DIR) {
             snprintf(dst_path, sizeof(dst_path), "%s/%s", dst, entry->d_name);
-            res = mkdir(dst_path, 0666);
+            res = mkdir(dst_path, 0777);
             if (res < 0) {
                 LOG("Error creating directory in dest: %s\n", strerror(errno));
             }
