@@ -15,3 +15,5 @@ Usage: `./lbp <src> <dest> [links_type]`
 <src> - the directory to be copied, <dest> - the backup directory, <links_type> - information about links. Use `-H` not to be dereferenced and `-L` for dereferencing
 `-H` behavour is set by default if no other option is present.
 
+Please send all ideas and bug reports to sidelnikov.si.001@gmail.com
+
