@@ -169,13 +169,15 @@ void run_backup(char* src, char* dst) {
 
     char new_src[BUFSIZ];
     char new_dst[BUFSIZ];
-
     char data[BUFSIZ];
+
     data[BUFSIZ - 1] = '\0';
+    new_src[BUFSIZ - 1] = '\0';
+    new_dst[BUFSIZ - 1] = '\0';
 
     int resop = mkfifo(myfifo, O_CREAT | 0666);
     if (resop < 0) {
-        LOG("FIFO init error: %s\n", strerror(errno));
+        LOG("FIFO init warning: %s\n", strerror(errno));
     }
 
     int fd_fifo = open(myfifo, O_RDONLY | O_NONBLOCK);
@@ -215,6 +217,10 @@ void run_backup(char* src, char* dst) {
                 if (n_read == -1) {
                     LOG("Error reading from FIFO: %s\n", strerror(errno));
                 }
+
+                /* Null - terminate */
+                data[n_read - 1] = '\0';
+
                 LOG("Bytes read: %d\n", n_read);
                 LOG("Path transmitted: %s\n", data);
 
@@ -239,6 +245,10 @@ void run_backup(char* src, char* dst) {
                 if (n_read == -1) {
                     LOG("Error reading from FIFO: %s\n", strerror(errno));
                 }
+
+                /* Null - terminate */
+                new_src[n_read - 1] = '\0';
+
                 LOG("Bytes read: %d\n", n_read);
                 LOG("New src path transmitted: %s\n", new_src);
 
@@ -247,6 +257,10 @@ void run_backup(char* src, char* dst) {
                 if (n_read == -1) {
                     LOG("Error reading from FIFO: %s\n", strerror(errno));
                 }
+
+                /* Null - terminate */
+                new_dst[n_read - 1] = '\0';
+
                 LOG("Bytes read: %d\n", n_read);
                 LOG("New dst backup path transmitted: %s\n", new_dst);
                 close(fd_fifo);
@@ -295,8 +309,7 @@ void traverse(char* src, char* dst, int indent) {
     DIR* dir = NULL;
     DIR* dst_dir = NULL;
     int df = 0;
-    // time_t rawtime;
-    // struct tm* timeinfo = NULL;
+
     struct stat src_info;
     struct stat dst_info;
     struct stat link_info;
@@ -359,7 +372,10 @@ void traverse(char* src, char* dst, int indent) {
             closedir(dst_dir);
 
             if (dst_info.st_mtime < src_info.st_mtime) {
+                
                 char source_name[MAX_PATH_SIZE];
+                source_name[MAX_PATH_SIZE - 1] = '\0';
+
                 snprintf(source_name, sizeof(source_name), "%s/%s", src, entry->d_name);
                 LOG("UPDATING file %s\n", source_name);
                 copy(source_name, dst,  DT_REG);

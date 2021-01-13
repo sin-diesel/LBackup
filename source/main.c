@@ -15,7 +15,8 @@
 1) add each log printing time
 2) refactor program interface
 3) refactor log printing in general for easier understanding 
-4) add readme */
+4) add readme
+5) Fix buffer size */
 
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
