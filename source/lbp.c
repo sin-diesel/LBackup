@@ -14,7 +14,7 @@
 #define LINKS_NO_DEREF 0
 #define LINKS_DEREF 1
 
-//#define COPY_RW
+#define COPY_RW
 
 /* Error macros */
 #define ERROR(error) fprintf(stderr, "Error in line %d, func %s: %s\n", __LINE__, __func__, strerror(error))
@@ -687,6 +687,7 @@ int copy_reg(char* src, char* dst, char* name) {
     int n_read = 0;
     int n_write = 0;
 
+    /* BUFSIZ is not enough, read in loop */
     char buf[BUFSIZ];
     int src_size = 0;
 
@@ -706,15 +707,6 @@ int copy_reg(char* src, char* dst, char* name) {
     src_size = info.st_size;
     LOG("Src size: %d\n", src_size);
 
-    /* read data from file */
-    n_read = read(fd_src, buf, src_size);
-    LOG("Read vs expected: %d, %d\n", n_read, src_size);
-
-    if (n_read != src_size) {
-        LOG("Error, read: %d, expected: %d, reading from source file %s: %s\n", n_read, src_size, src, strerror(errno));
-        return -1;  
-    }
-
     /* copy file via creating new file in dst path, first open a directory dst */
     dir = opendir(dst);
     if (dir == NULL) {
@@ -731,11 +723,24 @@ int copy_reg(char* src, char* dst, char* name) {
         return -1;
     }
 
-    n_write = write(fd_dst, buf, n_read);
-    if (n_write != n_read) {
-        LOG("Error writing to dst file %s: %s\n", dst, strerror(errno));
-        return -1;
+    /* read data from file */
+    while ((n_read = read(fd_src, buf, BUFSIZ / 2)) != 0) { /* /2 for safety */
+        //LOG("Read vs expected: %d, %d\n", n_read, BUFSIZ / 2);
+
+        if (n_read < 1) {
+            LOG("Error, read: %d, expected: %d, reading from source file %s: %s\n", n_read, BUFSIZ / 2, src, strerror(errno));
+            return -1;  
+        }
+
+        n_write = write(fd_dst, buf, n_read);
+        //LOG("Written vs expected: %d, %d\n", n_write, BUFSIZ / 2);
+
+        if (n_write < 1) {
+            LOG("Error writing to dst file %s: %s\n", dst, strerror(errno));
+            return -1;
+        }
     }
+
 
     close(drfd);
     close(fd_dst);

@@ -18,7 +18,8 @@
 4) add readme DONE
 5) add read/write instead of cp command DONE
 6) symlinks with read/write 
-7) check null-termination */
+7) check null-termination
+8) Read/write failes sometimes, fix BUFFER SIZE */
 
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
